@@ -40,7 +40,13 @@ dependencies {
         transitive = false
     }
 
+    compileOnly("com.github.GTNewHorizons:GTNHLib:0.11.52:dev") {
+        transitive = false
+    }
+
     runtimeOnlyNonPublishable(
         "com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1080-GTNH:dev"
     )
+
+    testImplementation("junit:junit:4.13.2")
 }

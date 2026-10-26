@@ -1,5 +1,7 @@
 package com.kyou.metransferdrive;
 
+import net.minecraft.block.Block;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,11 +16,13 @@ import cpw.mods.fml.common.event.FMLServerStartingEvent;
     modid = METransferDriveMod.MODID,
     version = Tags.VERSION,
     name = "ME Transfer Drive",
+    dependencies = "required-after:appliedenergistics2",
     acceptedMinecraftVersions = "[1.7.10]")
 public class METransferDriveMod {
 
     public static final String MODID = "metransferdrive";
     public static final Logger LOG = LogManager.getLogger(MODID);
+    public static Block meTransferDrive;
 
     @SidedProxy(
         clientSide = "com.kyou.metransferdrive.ClientProxy",
