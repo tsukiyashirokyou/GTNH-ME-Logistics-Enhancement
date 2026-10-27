@@ -49,4 +49,15 @@ dependencies {
     )
 
     testImplementation("junit:junit:4.13.2")
+
+    testImplementation(
+        "com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1080-GTNH:dev"
+    ) {
+        transitive = false
+    }
+
+    testRuntimeOnly("it.unimi.dsi:fastutil:8.5.18")
+    testRuntimeOnly("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209") {
+        transitive = false
+    }
 }

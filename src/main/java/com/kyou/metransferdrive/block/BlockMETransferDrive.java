@@ -9,6 +9,7 @@ import net.minecraft.block.material.Material;
 import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.IIcon;
@@ -16,6 +17,7 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.world.World;
 
 import com.kyou.metransferdrive.METransferDriveMod;
+import com.kyou.metransferdrive.gui.DriveGuiHandler;
 import com.kyou.metransferdrive.tile.TileMETransferDrive;
 
 import appeng.util.Platform;
@@ -45,10 +47,22 @@ public class BlockMETransferDrive extends BlockContainer {
     }
 
     @Override
+    public boolean onBlockActivated(World world, int x, int y, int z, EntityPlayer player, int side, float hitX,
+        float hitY, float hitZ) {
+        if (player.isSneaking()) {
+            return false;
+        }
+        if (!world.isRemote) {
+            player.openGui(METransferDriveMod.instance, DriveGuiHandler.MACHINE, world, x, y, z);
+        }
+        return true;
+    }
+
+    @Override
     public void breakBlock(final World world, final int x, final int y, final int z, final Block oldBlock,
         final int oldMetadata) {
         final TileEntity tile = world.getTileEntity(x, y, z);
-        if (!world.isRemote && tile instanceof TileMETransferDrive) {
+        if (!world.isRemote && !world.restoringBlockSnapshots && tile instanceof TileMETransferDrive) {
             final TileMETransferDrive drive = (TileMETransferDrive) tile;
             if (drive.dropItems()) {
                 final List<ItemStack> drops = new ArrayList<>();
@@ -64,6 +78,41 @@ public class BlockMETransferDrive extends BlockContainer {
         int direction = MathHelper.floor_double(placer.rotationYaw * 4.0D / 360.0D + 0.5D) & 3;
         int front = new int[] { 2, 5, 3, 4 }[direction];
         world.setBlockMetadataWithNotify(x, y, z, front, 2);
+        if (!world.isRemote) {
+            final TileEntity tile = world.getTileEntity(x, y, z);
+            if (tile instanceof TileMETransferDrive) {
+                final TileMETransferDrive drive = (TileMETransferDrive) tile;
+                if (placer instanceof EntityPlayer) {
+                    drive.getProxy()
+                        .setOwner((EntityPlayer) placer);
+                }
+                drive.restoreRecoveryItem(stack);
+            }
+        }
+    }
+
+    @Override
+    public ArrayList<ItemStack> getDrops(final World world, final int x, final int y, final int z, final int metadata,
+        final int fortune) {
+        final TileEntity tile = world.getTileEntity(x, y, z);
+        if (tile instanceof TileMETransferDrive && ((TileMETransferDrive) tile).hasTransferRecovery()) {
+            // breakBlock emits one packed device, replacing the normal block and separate cell drops.
+            return new ArrayList<>();
+        }
+        return super.getDrops(world, x, y, z, metadata, fortune);
+    }
+
+    @Override
+    public boolean removedByPlayer(final World world, final EntityPlayer player, final int x, final int y, final int z,
+        final boolean willHarvest) {
+        return willHarvest || super.removedByPlayer(world, player, x, y, z, false);
+    }
+
+    @Override
+    public void harvestBlock(final World world, final EntityPlayer player, final int x, final int y, final int z,
+        final int metadata) {
+        super.harvestBlock(world, player, x, y, z, metadata);
+        world.setBlockToAir(x, y, z);
     }
 
     @Override

@@ -1,62 +1,83 @@
 # ME Transfer Drive 开发状态
 
-> 更新日期：2026-10-26。本文件只记录当前阶段事实；完成下一阶段时替换过期内容。
-> 完整需求和开发规则见 [AGENTS.md](AGENTS.md)、[CODEX_PROMPT.md](CODEX_PROMPT.md)。
-> Starter 排错记录见 [环境配置归档](docs/archive/environment-setup.md)，仅在相关故障复现时查阅。
+> 更新日期：2026-10-27。阶段完成后替换过期状态，不追加命令执行日志。
+> 需求与规范见 [AGENTS.md](AGENTS.md)、[CODEX_PROMPT.md](CODEX_PROMPT.md)。
+> 本轮未读取环境归档；相关故障复现时才查阅 `docs/archive/`。
 
-## 当前状态
+## 当前进度
 
-- 目标为 GTNH 2.9.0-RC-2 / Minecraft 1.7.10 / Forge 10.13.4.1614 的独立 Mod。
-- Starter、第一阶段基础方块与 TileEntity、第二阶段 64 槽源网存储代码均已完成。
-- 第二阶段已通过完整 Gradle 构建、格式检查、Checkstyle 和纯逻辑单元测试。
-- 本阶段不以游戏内测试为前置条件；第二阶段的实际游戏行为仍未验证。
+- 目标：GTNH 2.9.0-RC-2 / Minecraft 1.7.10 / Forge 10.13.4.1614，独立 Mod。
+- 第一至五阶段已实现机器、64 槽原生存储、定时转运、多目标路由、绑定工具、GUI 及两项工作台配方。
+- 第六阶段实际源码安全审查和必要修复完成；没有进行完整整合包测试。
+- 问题分类、设计理由、最坏成本和人工核对步骤见 [SAFETY_REVIEW.md](SAFETY_REVIEW.md)。
+- 路由与环检查说明见 [docs/ROUTING_DESIGN.md](docs/ROUTING_DESIGN.md)。
 
 ## 已实现并通过自动验证
 
-- `DriveSlotLayout` 固定 8 组、每组 8 槽、共 64 个物理槽；组内索引和全局槽号可互相映射。
-- `DriveSlotLayoutTest` 的 3 项测试通过，覆盖全部槽位唯一映射及越界拒绝。
-- `TileMETransferDrive` 编译后继承本地 AE2 `AENetworkInvTile`，实现 `ICellContainer`；`ICellProvider`、`ISaveProvider`、`IReshuffleAccess` 经接口继承满足。
-- 64 槽 `AppEngInternalInventory`、AE2 原生元件 handler 查询和按注册存储类型提供 handler 的代码已编译。
-- 源网访问模式使用本地 `AccessRestriction`，仅允许 READ、WRITE、READ_WRITE，默认 READ_WRITE；模式读写 NBT 的代码已编译。
-- 方块拆除时取得并生成库存中元件掉落物的代码已编译；元件 `ItemStack` 的原有 NBT 随物品副本保留。
-- 完整 `build` 成功；Spotless 通过，主源码和测试源码 Checkstyle 均为 0 个问题。
-- 编译产物为 Java 8 字节码；本地 `javap` 确认 TileEntity 的 AE2 接口和方法签名。
+- 最终完整 Gradle `build` 成功，包括编译、重混淆打包、Spotless、Checkstyle 和全部 JUnit。
+- JUnit 共 193 项：第五阶段 157 项，本阶段新增 36 项；0 失败、0 错误、0 跳过。
+- Checkstyle：主源码 31 个文件、测试源码 20 个文件，0 个问题。
+- 新增 14 项图测试：两/三台设备环、无环分支、无关环、真实身份比较、权限/拓扑证据失效及检测预算。
+- 新增 8 项库存 NBT 测试：64 槽数据、错误标签、未知物品、负数/堆叠数量、局部失败整体隔离和重复保存。
+- 新增 4 项恢复证据测试：错误类型原样保留、封装快照、损坏封装及负数记录不转化为补偿。
+- 现有测试类新增 5 项协议边界、2 项事务诊断/异常回填、3 项配置候选/物品流体分组隔离测试。
+- 既有原生 handler 优先级/过滤、事务、能源、回填、故障切换、绑定、GUI 配置及配方测试全部保留通过。
+- 公共入口和新增点击协议通过客户端类引用静态检查；没有实际启动独立服务端。
+- 普通 JVM 的图、世界、权限和物品注册查找使用替身；测试不代表真实 AE/第三方容器兼容性证明。
 
-## 已实现但尚未经过游戏内验证
+## 本阶段修复与审查结果
 
-- 元件插拔按结构性变化重建 handler 缓存、更新闲置耗电并通知 AE 存储网；普通元件内容写入走原生 handler，不触发 64 槽重建。
-- `saveChanges()` 标记 TileEntity 所在区块待保存；库存插拔也标记待保存；库存与模式由 AE2 TileEntity 事件写入 NBT。
-- `AENetworkInvTile` 提供网络代理的区块卸载、失效及重新验证生命周期；方块破坏路径尝试返还全部已安装元件。
-- READ：源网可见并可提取，不可注入；WRITE：源网可注入，不可见且不可提取；READ_WRITE：两向允许。最终权限还受元件自身权限限制。
-- 模式切换更新现有 `MEInventoryHandler.setBaseAccess()` 并通知网络刷新，不把 `RESHUFFLE_ACCESS` 当作源网模式；目前只有服务端代码入口，没有 GUI 控件。
-- 物品、流体元件使用 AE2 已登记的原生 handler；其他已登记类型仅在相应扩展提供有效 handler 时被动加入源网。源质兼容性尚未确认，且不属于未来转运类型。
-- 世界放置、频道连接、真实注入/提取、模式切换后的网络可见性、存档重载、拆除返还及第三方元件兼容性均未验证。
+- 分页与原版 C0E 点击曾走不同队列，玩家库存 Shift/双击可能依赖错误的当前页；现改为统一主线程点击协议。
+- 点击携带窗口号、随机会话、配置修订号、页版本和递增序号；拒绝过期/重复请求，不接收客户端物品或 NBT。
+- 原生 Container 仍执行槽位语义；裸 C0E 不再执行机器槽操作，客户端不预测库存，按服务端槽位/光标结果显示。
+- 增量同步前复核打开的 Container、原设备/UUID、同世界、已加载区块、8 格距离、BUILD 及建造/编辑权限。
+- 断线后的排队操作不执行；服务器停止清空队列；配置与库存操作继续受事务、恢复及隔离锁约束。
+- 1.7.10 错误 compound 类型可能抛异常；恢复记录现按原始 NBTBase 保留，不因类型错误崩溃或丢失证据。
+- 元件库存先完整解码，再启用原生 handler；损坏库存整体保存在 `invalidCellInventory`，不同时物化另一份元件。
+- 隔离库存及损坏封装不会自动再次解码、退款或重放；封装快照保留原元件/事务数据，正常掉落仍走既有机制。
+- 库存入口拒绝负数/零数提取、无效槽及堆叠元件；保留原有每槽一个元件及数字键整叠换槽保护。
+- 自定义 breakBlock 掉落现检查 Forge `restoringBlockSnapshots`，防止快照回滚期间额外返还元件/封装设备。
+- WRITE 模式及源网离线时不发布可读库存增量；handler 结构仍由原生阵列事件刷新。
+- 异常事务新增至多 256 字符的异常类型/信息诊断；原有数量记账、已知余量回填与未知结果隔离算法保留。
+- 隔离、停止及周期结束时释放旧目标 Grid/候选游标；最近状态仅保存绑定 UUID 和枚举，不保留历史 Grid 身份。
+- 空闲检查不再每 Tick 复制绑定列表；GUI 配置快照按设备修订号缓存，避免每个点击重建全部目标 NBT。
 
-## 本地 AE2 API 依据
+## 跨周期环检查与预算
 
-- 依赖及源码包为 `Applied-Energistics-2-Unofficial:rv3-beta-1080-GTNH`；GTNH 2.9.0-RC-2 固定清单列出该版本和 GTNHLib `0.11.52`。
-- 本地 `TileDrive` 固定 10 槽；本项目复用其 `AENetworkInvTile`、`AppEngInternalInventory`、`ICellContainer` 与按槽注册 handler 的模式，不继承其固定数组或灯色同步。
-- 本地 `AEStackTypeRegistry.getAllTypes()` 枚举注册类型；`ICellHandler.getCellInventory()` 返回元件本身的原生存储 handler。
-- 本地 `MEInventoryHandler.setBaseAccess()` 将设备模式与元件权限取交集；`getAvailableItems()`、`canAccept()`、`extractItems()` 分别执行可见性及读写限制。
-- 本地 `GridStorageCache` 订阅 `MENetworkCellArrayUpdate`；`TileDrive` 用 `Platform.postChanges()` 通知元件插拔；`saveChanges()` 标记区块待保存。
-- 版本来源：[GTNH 2.9.0-RC-2 固定清单](https://github.com/GTNewHorizons/GT-New-Horizons-Modpack/blob/2.9.0-RC-2/README.md)。
+- 有实际待转运内容时，按当前物品/流体类型分别构图；空槽、源质、其它类型及不可转运元件不触发图检查。
+- 设备按已缓存的原生 handler 类型/可转运元数据发布分组候选边，不读取库存内容；不因源质分组形成虚假物品/流体环。
+- 只通过 `IGrid.getMachines(TileMETransferDrive.class)` 枚举已加载的本 Mod 设备；不扫描全部网络设备或目标库存。
+- 对能沿当前配置候选路径返回来源真实 Grid 的目标拒绝注入；自动路由可继续尝试其它无环目标。
+- 证明包含当前节点/Grid、配置/元件结构修订、加载、频道及权限见证；不同接口的持久绑定继续保留，运行时按真实 Grid 去重。
+- 本机变化立即使本机证明失效；已访问设备变化由见证复核发现；没有全局失效开关干扰无关设备。
+- 构图每 Tick 最多 4 个工作单位；每单位最多读取 1 个设备或解析 1 个绑定，设备元数据检查至多 64 槽。
+- 单作业上限：128 Grid、128 设备、512 绑定、256 条不同边、1024 工作单位；超限不提取，按原周期重试。
+- 活动证明最坏复核 704 个已缓存见证，完成后最多使用 20 个活动 Tick，再有界重建；这是新增安全成本，真实性能未测。
+- 配置版本与拓扑见证版本分开，普通元件插拔不会让连续 GUI 点击因配置版本变化而失效。
+- 图不持久化；新出现/此前不可见路径要到下一次有界重建才能识别，持续拓扑变化可延迟检测或转运。
+- 检查保守阻止配置候选环，可能早于实际物物流；不等于通用第三方库存环识别，也不承诺瞬时完整检测。
 
-## 构建环境与未解决问题
+## 保留的核心机制与兼容边界
 
-- Gradle Wrapper 9.7.1 使用 JDK 25；本地 Java 17 / 8 供构建工具链调用；缓存位于项目内 `.gradle-user-home`。
-- 构建命令仍需一次性指定本机 Java 17 / 8 的 `org.gradle.java.installations.paths`；离线完整 `build` 已成功。
-- 默认 Jabel 路径在当前环境对 `compileInjectedTagsJava` 报 `Cannot close compiler resources`；本项目源码未使用现代 Java 语法，已将 `enableModernJavaSyntax` 设为 `false`，常规构建通过。
-- 暂无完整 GTNH 整合包的游戏内测试；行为、跨 Mod 兼容性和真实性能测试统一留待功能完成后。
-- 正式发布版本号和 LICENSE 模板占位符仍待确认；未测量 TPS/MSPT，也未声称存储性能收益。
+- 64 槽、8 组 × 8 槽仍作为一个源网驱动器；READ / WRITE / READ_WRITE 保持源网外部权限语义。
+- 转运仅取本机原生物品/流体 handler，不扫描整个源网；源质只保留可适配的原生被动存储，不参与转运。
+- 目标继续走 GridStorageDestination → `IStorageGrid.getMEMonitor(type)`，保留原生优先级、过滤、权限、外部 handler 和虚空行为。
+- 未因超级箱/缸、量子存储、抽屉、存储总线或其它转运驱动器类别禁止整个目标网络。
+- 每 Tick 仍最多打开 1 个元件、枚举至多 63 类型并执行 1 笔事务；单批上限 4096 物品 / 64000 mB。
+- 默认周期 60 秒，范围 1～86400 秒；大型积压可跨多个周期长度处理，不为错过的周期排队。
+- 保留同 Grid 拒绝、同步防回流、能源扣取、模拟与实际数量区分、部分拒收回填及事务故障切换隔离。
+- 同一次运行的 RECOVERABLE 已知余量只回填原元件；重载记录和 UNCERTAIN 均不自动重放，不凭 held 生成补偿。
+- 人工核对先停服备份，保留来源/目标与完整事务证据；证据不足继续隔离，不能只回滚源设备后再次发货。
+- 本阶段没有清空事务、领取补偿或绕过锁的恢复入口；管理员核对流程详见安全审查文档。
 
-## 尚未实现
+## 环境、改动与最终待测
 
-- 自动转运、目标网络定位与绑定、去重和优先级、8 组路由配置。
-- 绑定工具、机器 GUI、访问模式的玩家操作界面、周期设置及工作台配方。
-- 物品/流体跨网安全转运、掉线与崩溃恢复流程及真实性能基准。
-
-## 下一阶段
-
-- 按后续指令实现单目标定时转运，只处理本机元件中的物品和流体；源质不参与转运。
-- 先核实本地 `TileIOPort` 的公开调用路径，设计目标模拟、实际提取/插入和失败回退，再加入分 Tick 预算。
-- 继续以完整 `build`、静态 API 检查和适用自动化测试验收；游戏内行为统一标记未验证。
+- AE2 为 `rv3-beta-1080-GTNH`，GTNHLib `0.11.52`；核对的是本地固定版本源码/JAR。
+- Gradle 9.7.1 / JDK 25，相关任务使用 Java 8/17，项目内 `.gradle-user-home` 缓存；既定版本、Wrapper 与工具链未改。
+- 新增 RouteGraph、CellInventoryNbt、RecoveryEvidence 及 3 个测试类；修改控制器/生命周期、注册表、Container/协议、GUI 反馈、掉落及已有测试。
+- 审查还核对了原生 TileEvent 分发、库存读写、AE 权限、monitor、Forge 点击和快照掉落实际路径。
+- 客户端与服务端需使用同一构建；点击协议改变后的 RTT、多人并发、分页、拖放、Shift、关闭/拆除均未经过游戏验证。
+- 最终重点测试 BUILD 撤销、WRITE 可见性、两/三台设备环、物品/流体分组隔离、拆分/合并及检测超限。
+- 同时实测取消放置回滚、各种拆除/爆炸/保护 Mod 掉落、封装重载、真实外部存储、源质扩展、配方和 NEI。
+- 硬崩溃跨 Grid 原子性、未知事务自动对账、第三方隐含共享库存环和接收端虚空损失仍不能保证。
+- 真实性能、单次第三方 handler 耗时和 TPS/MSPT 收益均未验证；发布版本号及 LICENSE 占位符仍待确认。
