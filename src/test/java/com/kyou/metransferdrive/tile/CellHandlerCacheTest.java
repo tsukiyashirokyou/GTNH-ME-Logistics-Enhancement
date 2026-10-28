@@ -57,7 +57,7 @@ import appeng.tile.inventory.InvOperation;
 public class CellHandlerCacheTest {
 
     private static final BaseActionSource SOURCE = new BaseActionSource();
-    private static final IAEStackType<?>[] TYPES = { type("cache_test_item", 1), type("cache_test_fluid", 1000),
+    static final IAEStackType<?>[] TYPES = { type("cache_test_item", 1), type("cache_test_fluid", 1000),
         type("cache_test_essentia", 1) };
 
     @Test
@@ -295,13 +295,12 @@ public class CellHandlerCacheTest {
         assertCount(drive, 63, TYPES[2], 80);
     }
 
-    private static long extract(final IMEInventory inventory, final IAEStackType type, final long count) {
+    static long extract(final IMEInventory inventory, final IAEStackType type, final long count) {
         final IAEStack result = inventory.extractItems(stack(type, count), Actionable.MODULATE, SOURCE);
         return result == null ? 0 : result.getStackSize();
     }
 
-    private static void assertCount(final TestDrive drive, final int slot, final IAEStackType type,
-        final long expected) {
+    static void assertCount(final TestDrive drive, final int slot, final IAEStackType type, final long expected) {
         final IMEInventory handler = drive.getNativeCellHandler(slot);
         final IAEStack available = handler.getAvailableItem(stack(type, 1), 0);
         assertEquals(expected, available == null ? 0 : available.getStackSize());
@@ -313,7 +312,7 @@ public class CellHandlerCacheTest {
                 .getLong("count"));
     }
 
-    private static final class TestDrive extends TileMETransferDrive {
+    static class TestDrive extends TileMETransferDrive {
 
         TestProxy proxy;
         final List<Integer> callbacks = new ArrayList<>();
@@ -552,7 +551,7 @@ public class CellHandlerCacheTest {
             });
     }
 
-    private static IAEStack stack(final IAEStackType type, final long count) {
+    static IAEStack stack(final IAEStackType type, final long count) {
         final long[] amount = { count };
         final Class contract = type == TYPES[0] ? IAEItemStack.class
             : type == TYPES[1] ? IAEFluidStack.class : IAEStack.class;
@@ -569,6 +568,8 @@ public class CellHandlerCacheTest {
                         return amount[0];
                     case "setStackSize":
                         amount[0] = (long) args[0];
+                        return proxy;
+                    case "setCraftable":
                         return proxy;
                     case "incStackSize":
                         amount[0] += (long) args[0];

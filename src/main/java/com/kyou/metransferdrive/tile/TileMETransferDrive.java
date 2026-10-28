@@ -37,6 +37,7 @@ import appeng.api.networking.events.MENetworkEventSubscribe;
 import appeng.api.networking.events.MENetworkPowerStatusChange;
 import appeng.api.networking.security.BaseActionSource;
 import appeng.api.networking.security.MachineSource;
+import appeng.api.networking.storage.IStorageGrid;
 import appeng.api.storage.ICellContainer;
 import appeng.api.storage.ICellHandler;
 import appeng.api.storage.IMEInventory;
@@ -47,6 +48,7 @@ import appeng.api.storage.data.IAEStackType;
 import appeng.api.util.AECableType;
 import appeng.api.util.DimensionalCoord;
 import appeng.me.GridAccessException;
+import appeng.me.cache.GridStorageCache;
 import appeng.me.storage.MEInventoryHandler;
 import appeng.tile.TileEvent;
 import appeng.tile.events.TileEventType;
@@ -73,6 +75,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     private final AETransferController transfer = new AETransferController(this);
 
     private AccessRestriction accessMode = AccessRestriction.READ_WRITE;
+    private AccessRestriction pendingAccessMode;
+    private boolean changingAccess;
     private boolean handlersCached;
     private boolean buildingHandlers;
     private boolean ready;
@@ -126,6 +130,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     @TileEvent(TileEventType.TICK)
     public void tickTransfers() {
         if (this.ready && this.worldObj != null && !this.worldObj.isRemote && !this.isInvalid()) {
+            this.applyPendingAccessMode();
             this.transfer.tick();
         }
     }
@@ -171,7 +176,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @Override
     public boolean isItemValidForSlot(final int slot, final ItemStack stack) {
-        return !this.hasTransferRecovery() && slot >= 0
+        return !this.changingAccess && !this.hasTransferRecovery()
+            && slot >= 0
             && slot < DriveSlotLayout.TOTAL_SLOTS
             && stack != null
             && AEApi.instance()
@@ -225,6 +231,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @TileEvent(TileEventType.WORLD_NBT_READ)
     public void readAccessMode(final NBTTagCompound data) {
+        this.pendingAccessMode = null;
         if (data.hasKey("sourceAccessMode")) {
             try {
                 final AccessRestriction stored = AccessRestriction.valueOf(data.getString("sourceAccessMode"));
@@ -237,7 +244,9 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @TileEvent(TileEventType.WORLD_NBT_WRITE)
     public void writeAccessMode(final NBTTagCompound data) {
-        data.setString("sourceAccessMode", this.accessMode.name());
+        data.setString(
+            "sourceAccessMode",
+            (this.pendingAccessMode == null ? this.accessMode : this.pendingAccessMode).name());
     }
 
     @TileEvent(TileEventType.WORLD_NBT_READ)
@@ -265,7 +274,9 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     }
 
     public boolean isTransferConfigurationLocked() {
-        return this.transfer.isConfigurationLocked() || this.quarantinedCells != null;
+        return this.changingAccess || this.pendingAccessMode != null
+            || this.transfer.isConfigurationLocked()
+            || this.quarantinedCells != null;
     }
 
     /** Code-only endpoint for the future validated binding flow. No player binding gesture is added here. */
@@ -381,7 +392,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @Override
     public boolean canExtractItem(final int slot, final ItemStack stack, final int side) {
-        return !this.hasTransferRecovery();
+        return !this.changingAccess && !this.hasTransferRecovery();
     }
 
     @Override
@@ -438,7 +449,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         return this.accessMode;
     }
 
-    /** Restricts only source-grid access. Existing cell handlers keep their identity. */
+    /** World requests commit at the next Tile Tick, outside native Monitor/ItemWatcher notification stacks. */
     public void setAccessMode(final AccessRestriction mode) {
         if (mode == null || mode == AccessRestriction.NO_ACCESS) {
             throw new IllegalArgumentException("Expected READ, WRITE or READ_WRITE");
@@ -446,20 +457,101 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         if (this.worldObj != null && this.worldObj.isRemote) {
             return;
         }
-        if (this.accessMode == mode) {
-            return;
-        }
-
-        this.transfer.sourceAccessChanging();
-        this.accessMode = mode;
-        for (final MEInventoryHandler<?> handler : this.handlersBySlot) {
-            if (handler != null) {
-                handler.setBaseAccess(mode);
+        if (this.changingAccess) {
+            this.pendingAccessMode = mode;
+            this.saveChanges(null);
+        } else {
+            if (this.transfer.isConfigurationLocked() || this.quarantinedCells != null || this.buildingHandlers) {
+                throw new IllegalStateException("Cannot change cell access during transfer, recovery or construction");
+            }
+            if (this.ready) {
+                this.pendingAccessMode = mode;
+                this.saveChanges(null);
+            } else {
+                this.applyAccessMode(mode);
             }
         }
-        this.markDirty();
-        if (this.ready && this.worldObj != null && !this.worldObj.isRemote) {
-            this.postCellArrayUpdate();
+    }
+
+    void applyPendingAccessMode() {
+        if (!this.changingAccess && this.pendingAccessMode != null
+            && !this.transfer.isConfigurationLocked()
+            && this.quarantinedCells == null) {
+            final AccessRestriction mode = this.pendingAccessMode;
+            this.pendingAccessMode = null;
+            try {
+                this.applyAccessMode(mode);
+            } catch (final RuntimeException failure) {
+                // A native listener may already have seen the change. Never replay an uncertain notification batch.
+                METransferDriveMod.LOG.warn("ME Transfer Drive access notification failed", failure);
+            }
+        }
+    }
+
+    private void applyAccessMode(final AccessRestriction mode) {
+        if (mode == this.accessMode) {
+            return;
+        }
+        this.changingAccess = true;
+        try {
+            this.transfer.sourceAccessChanging();
+            // Settle provider membership/forceUpdate callbacks using the OLD mode, before capturing our delta.
+            // Native NetworkInventoryHandler retains these same wrappers and checks their permissions at call time.
+            if (this.ready) {
+                this.postCellArrayUpdate();
+            }
+            final boolean readChanged = this.accessMode.hasPermission(AccessRestriction.READ)
+                != mode.hasPermission(AccessRestriction.READ);
+            IGrid grid = readChanged ? this.accessNotificationGrid() : null;
+            if (grid != null) {
+                this.updateHandlers();
+                // A previously cold cache can publish a synchronous idle-power event while finishing construction.
+                grid = this.accessNotificationGrid();
+            }
+            final CellVisibilityChange visible = grid == null ? null : new CellVisibilityChange();
+            if (visible != null) {
+                visible.collect(this.handlersBySlot, -1);
+            }
+            this.accessMode = mode;
+            for (final MEInventoryHandler<?> handler : this.handlersBySlot) {
+                if (handler != null) {
+                    handler.setBaseAccess(mode);
+                }
+            }
+            if (visible != null) {
+                visible.collect(this.handlersBySlot, 1);
+                for (final Map.Entry<IAEStackType<?>, List<IAEStack<?>>> change : visible.deltas()
+                    .entrySet()) {
+                    if (this.accessNotificationGrid() != grid) {
+                        break;
+                    }
+                    grid.<IStorageGrid>getCache(IStorageGrid.class)
+                        .postAlterationOfStoredItems(change.getKey(), change.getValue(), this.actionSource);
+                }
+            }
+            this.markDirty();
+        } finally {
+            this.changingAccess = false;
+        }
+    }
+
+    IGrid accessNotificationGrid() {
+        if (!this.ready || this.worldObj == null
+            || this.worldObj.isRemote
+            || this.isInvalid()
+            || !this.getProxy()
+                .isActive()) {
+            return null;
+        }
+        try {
+            final IGrid grid = this.getProxy()
+                .getGrid();
+            final IStorageGrid storage = grid.getCache(IStorageGrid.class);
+            // Only an already-active native provider has a pre-existing visible quantity to change manually.
+            return storage instanceof GridStorageCache && ((GridStorageCache) storage).getActiveCellProviders()
+                .contains(this) ? grid : null;
+        } catch (final GridAccessException unavailable) {
+            return null;
         }
     }
 
@@ -562,7 +654,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         return AEStackTypeRegistry.getAllTypes();
     }
 
-    private void postCellArrayUpdate() {
+    void postCellArrayUpdate() {
         try {
             this.getProxy()
                 .getGrid()
@@ -583,6 +675,9 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
             if (buildingHandlers) {
                 throw new IllegalStateException("Cannot replace cells while constructing their handlers");
             }
+            if (changingAccess) {
+                throw new IllegalStateException("Cannot replace cells while publishing access visibility");
+            }
             if (!loadingCells && hasTransferRecovery()) {
                 throw new IllegalStateException("Cell inventory is locked by a pending transfer transaction");
             }
@@ -594,7 +689,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
         @Override
         public ItemStack decrStackSize(final int slot, final int amount) {
-            return buildingHandlers || hasTransferRecovery()
+            return buildingHandlers || changingAccess
+                || hasTransferRecovery()
                 || amount <= 0
                 || slot < 0
                 || slot >= DriveSlotLayout.TOTAL_SLOTS ? null : super.decrStackSize(slot, amount);

@@ -1,19 +1,19 @@
 # ME Transfer Drive 发布前性能、安全性与 Bug 综合审计
 
-审计日期：2026-10-28。审计基线提交：`e4959a7401b596e709ec654ebc339c8c193bab43`。
+审计日期：2026-10-28。审计基线提交：`e4959a7401b596e709ec654ebc339c8c193bab43`。同日补充 P1-01 专项修复；除第8.1节修复补充外，源码行号与构建数据保留原审计基线。
 
 ## 1. 执行摘要与发布判断
 
-**结论：可以冻结常规功能、进入受控 GTNH 验收；尚不建议将当前构建作为稳定版发布。** 本轮没有找到在健康原生 API 正常返回条件下、可证明阻止发布的 P0 复制/丢失/免费转运路径；这不是“所有环境均安全”的证明。发现两项有具体触发条件的 P1，应先作局部修复或明确接受其影响，再确定公开 Release Candidate：
+**结论：可以冻结常规功能、进入受控 GTNH 验收；尚不建议将当前构建作为稳定版发布。** 原审计没有找到在健康原生 API 正常返回条件下、可证明阻止发布的 P0 复制/丢失/免费转运路径；这不是“所有环境均安全”的证明。原审计发现两项有具体触发条件的 P1：P1-01 已完成专项修复与自动验证、等待游戏验收；P1-02 尚未处理，应局部修复或明确接受其影响，再确定公开 Release Candidate：
 
-1. **READ 可见性切换遗漏精确 ItemWatcher 通知**：终端库存可已刷新，等级发信器仍持有旧数值。属于确定的通知链缺口，不是旧 Handler 分叉问题。
+1. **READ 可见性切换遗漏精确 ItemWatcher 通知（已修复，游戏待测）**：原缺口及补充证据保留于第8.1节。当前使用已有外层 Handler 的前后可见差量，保留 Handler 身份，不重新构建库存。
 2. **共享能源额度下的长期饥饿**：低开销完整 FIFO 轮次总由同一设备先取额度，后设备获得 CPU 片但长期搬运0。新增确定性测试复现，不破坏数量或共享总额度。
 
 第三项 P1 是**固定 AE2 的条件集成风险**：第三方 Handler/同步 Watcher 抛异常后，上游缺少 finally 的深度计数/栈可能污染网络并保留引用。本 Mod 的保守隔离不能修复整个上游网络；不建议在附加 Mod 中反射清理或大范围改写它。
 
 没有发现需要再次重构原生 Handler 共用、泛型事务、标准目标 monitor、稳定 UUID 路由、独立服务端边界或一次性退款架构的证据。2ms 是准入软预算，不能中断慢 Handler、图见证、回填或退款，不能作为峰值 MSPT 承诺。真正需要游戏测量的热点是：循环图见证、反复能源大额探测、原生元件逐类型 NBT 写入、同步 Watcher、复杂外部容器和多人 GUI。
 
-**范围控制：** 本轮未修改生产 Java、依赖、配方、GUI、工具链或运行参数；仅新增报告、审计见证测试并更新开发状态。没有进行完整整合包游戏测试，没有提供实测 TPS/MSPT、内存字节或性能提升百分比。
+**范围控制：** 原审计未修改生产 Java、依赖、配方、GUI、工具链或运行参数；仅新增报告、审计见证测试并更新开发状态。本次第8.1节专项补充只修改访问模式通知及相关测试，不修改能源、调度器、路由图或事务架构。没有进行完整整合包游戏测试，没有提供实测 TPS/MSPT、内存字节或性能提升百分比。
 
 ## 2. 证据、版本与验证层级
 
@@ -52,7 +52,7 @@
 
 依据：`tile/TileMETransferDrive.java:onChangeInventory:179–226,getNativeCellHandler:376–379,saveChanges:489–494,updateHandlers:497–555`；AE2 `tile/inventory/AppEngInternalInventory.java:80–138`、`me/cache/GridStorageCache.java:237–302`、`me/cache/NetworkMonitor.java:296–345`。
 
-**旧缓存 P0 未复现为当前问题。** 负槽保存不再使已发布的 Handler A 失效；缓存完成标记先于闲置耗电同步事件；构造期递归查询/换元件被拒绝。正常内部操作和源网共用原生库存，不新增另一份库存缓存。实际世界中的 ItemWatcher 重入仍需验收，且第8.1节的权限切换通知问题独立存在。
+**旧缓存 P0 未复现为当前问题。** 负槽保存不再使已发布的 Handler A 失效；缓存完成标记先于闲置耗电同步事件；构造期递归查询/换元件被拒绝。正常内部操作和源网共用原生库存，不新增另一份库存缓存。实际世界中的 ItemWatcher 重入仍需验收；第8.1节的独立权限切换通知问题现已专项修复，游戏集成未验证。
 
 ### 3.2 周期、路由、事务与能源
 
@@ -252,13 +252,49 @@ INT_MAX是外部int桥接保护而非日常4096配额。AE2 `util/item/AEItemSta
 
 ## 8. P0 / P1 / P2 发现清单及精确建议
 
-### 8.1 P1-01：源访问可见性改变遗漏精确 Watcher（确定缺口）
+### 8.1 P1-01：源访问可见性改变遗漏精确 Watcher（已修复，自动验证通过，游戏待测）
+
+以下位置、触发证据及建议保留原审计发现；当前实现与验证见随后专项补充。
 
 **位置：** `tile/TileMETransferDrive.setAccessMode:453–463`；AE `GridStorageCache.cellUpdate:237–272`、`NetworkMonitor.forceUpdate:352–366/postChange:320–339`、`parts/automation/PartLevelEmitter.configureWatchers:286–311/onStackChange:375–384`。
 
 **触发证据：** 同一active provider不变时cellUpdate不生成provider增减delta，forceUpdate只通知monitor listener。精确指定种类、无模糊卡的LevelEmitter会移除monitor listener，仅注册ItemWatcher，所以不接收该刷新。READ_WRITE→WRITE终端隐藏100铁，但阈值50的精确发信器可保留旧100；WRITE期间内部转运也按设计不发可读delta；切回READ仍可能维持旧值，直到同类型额外通知/重新配置。
 
 **影响：** 库存可见性、红石控制及依赖其行为的自动化错误；未证明实际复制库存。**建议发布前修复**：在READ可见性变化时对本机内容发布正确前后可见增减或合法Watcher更新，保留同一Handler，考虑同步重入及provider活跃变化的双记账。现有权限策略测试未真实覆盖此通知链；需原生精确Watcher与游戏回归。
+
+#### 8.1.1 固定版本复核与修复顺序（2026-10-28）
+
+- AE2 `appeng/me/cache/GridStorageCache.java:195–272`：仅 provider 在 active/inactive 集合迁移时追踪增减；同一 active provider 仅改变模式不会生成数量差量。`NetworkMonitor.java:352–366` 的 `forceUpdate()` 只更新普通 Monitor Listener。
+- `NetworkMonitor.java:296–350`：同 Monitor 通知栈内的嵌套 `postChange()` 会直接返回。因此不能在任意同步 Watcher 回调中立即切换权限并发布差量，也不能先改权限再延迟差量。
+- `GridStorageCache.java:316–319` 的泛型 `postAlterationOfStoredItems(type, changes, source)` 进入原生 `postChange()`；后者在 `320–336` 重新查询**当前整个网络该种类总量**，将 fullStack 和差量交给精确 Watcher。无需本 Mod 扫描其他驱动器，也不能把其他驱动器库存当成本机差量。
+- `NetworkInventoryHandler.java:104–109,345–394,455–488` 保留原外层 Handler 引用，查询时执行其当前权限；`MEInventoryHandler.java:132–179` 的枚举及精确查询检查读取权限和原生提取过滤。因此先在**旧模式**发布结构事件、待其回调退栈，再原地修改同一 Wrapper 的权限是可行顺序，不需要第二次结构事件。
+- 不调用 `Platform.postChanges(ItemStack, ItemStack)`：该重载在 `appeng/util/Platform.java:1408–1437` 从元件重新创建原生 Handler，不能用来读取本次可见性证据。
+
+当前调用链：
+
+```text
+setAccessMode：验证原事务/损坏状态锁 → 暂存目标模式，标记区块待保存
+下一个服务端 Tile Tick（普通调用栈）→ applyPendingAccessMode
+→ 锁住本次模式提交/元件结构更换 → 原有配置失效入口
+→ 旧模式下 MENetworkCellArrayUpdate（一次），等待 provider/forceUpdate 回调返回
+→ 确认本机属于当前真实 Grid 的 active providers；仅 READ 位变化才读取本机现有外层 Handler
+→ 收集旧可见量 → 原地 setBaseAccess → 收集新可见量
+→ 每类型聚合 after-before，确认仍为同一 active Grid → 原生 postAlterationOfStoredItems
+→ 普通监听器刷新；原生精确 Watcher 查询最终整网同种数量 → markDirty
+```
+
+修复位置：`tile/TileMETransferDrive.java:131–135,246–248,453–561,674–697`；新建 `tile/CellVisibilityChange.java:21–98`，只保留本次通知所需的短期数量证据，不持久化、不提供库存、不创建 Handler。多个槽同种量按原生精确身份聚合；临时精确整数累加防止多个合法 long 量求和溢出，超出 long 的差量分段表示，不能据此声称原生终端可精确显示超过 long 的库存总量。
+
+**避免双重通知和缓存分叉：** provider 激活迁移先以旧模式结算，再捕获稳定可见量；手工通知只描述后续权限差量。READ↔READ_WRITE 不枚举库存、不发布数量差量；空差量不通知。原有 Handler 缓存不失效、不重建；普通网络存取、`slot=-1` 保存及结构插拔路径保持原机制。离线/未激活/未注册时只改变模式，不发虚假数量通知；以后由原生 provider 加入流程公布实际可见量。同步回调中的下一次模式请求延至下一 Tile Tick，元件替换被锁住。每个类型发布前复核同一 active Grid，失效后不把旧差量重定向到新 Grid，不盲目重放已通知批次。
+
+#### 8.1.2 自动验证、性能边界与游戏验收
+
+- `src/test/java/com/kyou/metransferdrive/tile/CellAccessNotificationTest.java:45–310` 新增12项回归：失去/恢复READ、READ↔READ_WRITE无虚假差量、本机同种多槽与其他驱动器库存、空槽、64槽三类型聚合、正常源网存取与内部提取/插拔交替、未激活/不可用/未注册、结构回调先结算、通知及结构回调重入、发布期间拓扑失效、延迟提交与NBT、long聚合边界。现有缓存一致性测试的断言全部保留，仅开放共享测试夹具并补齐其 stack 的 `setCraftable` 契约。
+- 测试执行**生产 setter、提交、差量收集及发布调用**，使用固定 AE2 的真实 `AppEngInternalInventory` 回调、`CellInventory`、`CellInventoryHandler`、`MEInventoryHandler`、`NetworkInventoryHandler`。世界/注册表、Grid发布边界、类型身份及订阅者是替身；未实例化真实 `GridStorageCache`、`NetworkMonitor`、`ItemWatcher` 或等级发信器，不能将这些测试称为真实 Grid 集成测试。
+- 完整 `build spotlessCheck checkstyleMain checkstyleTest --console=plain --offline` **BUILD SUCCESSFUL**；343项JUnit，0失败/0错误/0跳过，保留原331项；Checkstyle主38文件、测试32文件均0问题，Spotless Apply/Check通过。
+- 无每Tick库存扫描或 Handler 重建，只增加待提交模式的常数检查。真正READ可见性变化时最多收集64个已有Handler的前后清单；每类型一次通知（正常long范围内同种一条），非每槽发事件。精确 Watcher 的整网同种查询由原生通知机制执行，属于必要成本；未测MSPT。
+- **仍需GTNH验证：** 终端及指定铁锭、无模糊卡的精确等级发信器，设置阈值50，本机两卡共140铁、其他原生驱动器900铁；READ_WRITE→WRITE应统一显示900，WRITE→READ恢复1040，READ↔READ_WRITE不改变数量。随后WRITE期间内部转运，恢复READ应只显示真实剩余量；再测三类元件、64槽、空槽、同步回调请求再次切换、源网断电/断线/恢复、网络合并拆分以及连续插拔/保存重载。
+- 任意第三方同步监听器抛异常、在 getter 中产生副作用或通知期间改动复杂拓扑，仍受固定上游异常/生命周期边界约束（第8.3节）。当前做法不向已失效 Grid 继续发布，也不自动重放不确定通知；真实拓扑重新注册后的终端与 Watcher 一致性仍需验收。本次不修改P1-02、调度器、能源退款、路由图和数量事务。
 
 ### 8.2 P1-02：同Grid后设备可能长期能源饥饿（条件可达，自动复现）
 
@@ -324,7 +360,7 @@ P2列表中既有确定的额外工作，也有条件复杂度风险；没有一
 | 编号 | 必做场景 | 可审计通过标准 |
 | --- | --- | --- |
 | G1 | 相同64元件：7台原生Drive、本机全OFF、本机转运；另测空机/8元件 | 分开记录节点/频道/闲置AE、原生统计差异、平均/峰值耗时、NBT/网络量；不给百分比预设结论 |
-| G2 | READ/WRITE/READ_WRITE，精确等级发信器/终端；开GUI连续插拔三类元件 | 同一共享Handler；可见性及真实注入/提取符合模式；修复P1-01后Watcher及时一致；WRITE仍能内部转运 |
+| G2 | READ/WRITE/READ_WRITE，精确等级发信器/终端；开GUI连续插拔三类元件 | 同一共享Handler；可见性及真实注入/提取符合模式；验收第8.1节修复后的Watcher及时一致；WRITE仍能内部转运 |
 | G3 | 三类各完整、部分、拒收；源网同时读写，目标有原生元件和物品/流体/源质总线容器 | 逐种源/目标/已知held数量守恒；不抽源网其它元件；异常不重复发货；主动虚空单独标注 |
 | G4 | 4096/百万/千万/一亿/>int同种，63小种类、64混合槽 | 不截断/溢出；真实保护额度不足自动分批，无漏处理/死循环；记录事务次数及调用峰值 |
 | G5 | 指定多UUID/自动优先级、同Grid多接口、满仓切下目标；拆分合并、撤权限/卸载 | 去重不重复发送，余量精确；新周期按当前归属；失效安全停止，无强制加载 |
@@ -338,4 +374,4 @@ P2列表中既有确定的额外工作，也有条件复杂度风险；没有一
 
 计时须注明机器、JVM、整合包、设备/类型/目标数量、样本窗口及Profiler方法；至少记录平均与峰值、成功量、事务数和库存/能源delta。无需为了形式制造某个MSPT阈值，服务器可接受限值由实测及服主需求决定。
 
-**发布决策：** 先处理P1-01；P1-02建议在公开RC前局部修复，若接受限制必须明确告知并验证预期规模。P1-03需对实际使用的外部后端完成异常健康验收，发现真实触发则暂停该组合发布。完成G1～G12并保存证据、没有未解释数量变化/重复能源或掉落/无限等待后，可以结束常规开发并发布稳定版，同时公开硬崩溃原子性、虚空和隐藏共享库存的边界。当前不需要再开启一轮一般转运重构。
+**发布决策：** P1-01已局部修复、自动验证通过，仍须完成G2真实Watcher验收；P1-02建议在公开RC前局部修复，若接受限制必须明确告知并验证预期规模。P1-03需对实际使用的外部后端完成异常健康验收，发现真实触发则暂停该组合发布。完成G1～G12并保存证据、没有未解释数量变化/重复能源或掉落/无限等待后，可以结束常规开发并发布稳定版，同时公开硬崩溃原子性、虚空和隐藏共享库存的边界。当前不需要再开启一轮一般转运重构。
