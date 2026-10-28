@@ -13,7 +13,9 @@ public final class DriveGuiAction {
         PERIOD,
         ACCESS,
         UPDATE_TARGET,
-        DELETE_TARGET
+        DELETE_TARGET,
+        TOGGLE_TARGET,
+        SPECIFIC_MODE
     }
 
     public final Kind kind;

@@ -74,6 +74,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     private AccessRestriction accessMode = AccessRestriction.READ_WRITE;
     private boolean handlersCached;
+    private boolean buildingHandlers;
     private boolean ready;
     private boolean wasActive;
     private UUID bindingIdentity = UUID.randomUUID();
@@ -182,8 +183,15 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     @Override
     public void onChangeInventory(final IInventory inventory, final int slot, final InvOperation operation,
         final ItemStack removed, final ItemStack added) {
-        if (this.loadingCells || slot < 0) {
+        if (this.loadingCells) {
             this.handlersCached = false;
+            return;
+        }
+
+        if (slot < 0) {
+            // AE's setter/decrement ends with markDirty(-1), after the new handlers may already be in the Grid.
+            // A content/save notification must not detach our cache from those published handlers.
+            this.saveChanges(null);
             return;
         }
 
@@ -490,50 +498,68 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         if (this.handlersCached) {
             return;
         }
-
-        this.cellsByType.clear();
-        for (final IAEStackType<?> type : AEStackTypeRegistry.getAllTypes()) {
-            this.cellsByType.put(type, new ArrayList<>());
+        if (this.buildingHandlers) {
+            throw new IllegalStateException("Recursive cell handler construction");
         }
 
         double idlePower = 2.0;
-        for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {
-            this.handlersBySlot[slot] = null;
-            final ItemStack cell = this.cells.getStackInSlot(slot);
-            if (cell == null) {
-                continue;
+        this.buildingHandlers = true;
+        try {
+            this.cellsByType.clear();
+            for (final IAEStackType<?> type : this.cellStackTypes()) {
+                this.cellsByType.put(type, new ArrayList<>());
             }
 
-            final ICellHandler cellHandler = AEApi.instance()
-                .registries()
-                .cell()
-                .getHandler(cell);
-            if (cellHandler == null) {
-                continue;
-            }
-
-            for (final IAEStackType<?> type : AEStackTypeRegistry.getAllTypes()) {
-                final IMEInventoryHandler nativeHandler = cellHandler.getCellInventory(cell, this, type);
-                if (nativeHandler == null) {
+            for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {
+                this.handlersBySlot[slot] = null;
+                final ItemStack cell = this.cells.getStackInSlot(slot);
+                if (cell == null) {
                     continue;
                 }
 
-                final MEInventoryHandler handler = new DriveCellHandler(
-                    nativeHandler,
-                    nativeHandler.getStackType(),
-                    this);
-                handler.setBaseAccess(this.accessMode);
-                this.handlersBySlot[slot] = handler;
-                this.cellsByType.get(type)
-                    .add(handler);
-                idlePower += cellHandler.cellIdleDrain(cell, nativeHandler);
-                break;
+                final ICellHandler cellHandler = this.findCellHandler(cell);
+                if (cellHandler == null) {
+                    continue;
+                }
+
+                for (final IAEStackType<?> type : this.cellStackTypes()) {
+                    final IMEInventoryHandler nativeHandler = cellHandler.getCellInventory(cell, this, type);
+                    if (nativeHandler == null) {
+                        continue;
+                    }
+
+                    final MEInventoryHandler handler = new DriveCellHandler(
+                        nativeHandler,
+                        nativeHandler.getStackType(),
+                        this);
+                    handler.setBaseAccess(this.accessMode);
+                    this.handlersBySlot[slot] = handler;
+                    this.cellsByType.get(type)
+                        .add(handler);
+                    idlePower += cellHandler.cellIdleDrain(cell, nativeHandler);
+                    break;
+                }
             }
+
+            // setIdlePowerUsage posts a synchronous AE event. Its listeners must see the completed cache.
+            this.handlersCached = true;
+        } finally {
+            this.buildingHandlers = false;
         }
 
         this.getProxy()
             .setIdlePowerUsage(idlePower);
-        this.handlersCached = true;
+    }
+
+    ICellHandler findCellHandler(final ItemStack cell) {
+        return AEApi.instance()
+            .registries()
+            .cell()
+            .getHandler(cell);
+    }
+
+    Iterable<IAEStackType<?>> cellStackTypes() {
+        return AEStackTypeRegistry.getAllTypes();
     }
 
     private void postCellArrayUpdate() {
@@ -554,6 +580,9 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
         @Override
         public void setInventorySlotContents(final int slot, final ItemStack stack) {
+            if (buildingHandlers) {
+                throw new IllegalStateException("Cannot replace cells while constructing their handlers");
+            }
             if (!loadingCells && hasTransferRecovery()) {
                 throw new IllegalStateException("Cell inventory is locked by a pending transfer transaction");
             }
@@ -565,8 +594,10 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
         @Override
         public ItemStack decrStackSize(final int slot, final int amount) {
-            return hasTransferRecovery() || amount <= 0 || slot < 0 || slot >= DriveSlotLayout.TOTAL_SLOTS ? null
-                : super.decrStackSize(slot, amount);
+            return buildingHandlers || hasTransferRecovery()
+                || amount <= 0
+                || slot < 0
+                || slot >= DriveSlotLayout.TOTAL_SLOTS ? null : super.decrStackSize(slot, amount);
         }
     }
 

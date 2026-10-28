@@ -14,6 +14,7 @@ import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
 
 import com.kyou.metransferdrive.tile.DriveSlotLayout;
 import com.kyou.metransferdrive.tile.TileMETransferDrive;
@@ -307,11 +308,11 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
                 "route" + group,
                 route.getMode()
                     .name());
-            config.setString(
-                "target" + group,
-                route.getTargetId() == null ? ""
-                    : route.getTargetId()
-                        .toString());
+            final NBTTagList selected = new NBTTagList();
+            for (final UUID id : route.getTargetIds()) {
+                selected.appendTag(new NBTTagString(id.toString()));
+            }
+            config.setTag("selected" + group, selected);
         }
         final List<TransferTarget> targets = new ArrayList<>(this.tile.getTransferTargets());
         targets.sort((first, second) -> Integer.compare(second.getPriority(), first.getPriority()));
@@ -360,8 +361,10 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         state.setBoolean("recovery", this.tile.hasTransferRecovery());
         boolean configured = false;
         for (int group = 0; group < 8; group++) {
-            configured |= this.tile.getTransferGroupRoute(group)
-                .getMode() != TargetRegistry.Mode.UNASSIGNED;
+            final TargetRegistry.Route route = this.tile.getTransferGroupRoute(group);
+            configured |= route.getMode() == TargetRegistry.Mode.AUTOMATIC
+                || route.getMode() == TargetRegistry.Mode.SPECIFIC && !route.getTargetIds()
+                    .isEmpty();
         }
         state.setBoolean(
             "configured",
@@ -401,6 +404,11 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
             .anyMatch(
                 target -> target.getId()
                     .equals(id));
+    }
+
+    @Override
+    public TargetRegistry.Route getRoute(final int group) {
+        return this.tile.getTransferGroupRoute(group);
     }
 
     @Override

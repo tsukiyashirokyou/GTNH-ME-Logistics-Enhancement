@@ -182,6 +182,51 @@ public class RouteGraphTest {
         assertTrue(this.topology.resolutions <= RouteGraph.MAX_BINDINGS);
     }
 
+    @Test
+    public void multiSelectedCycleCandidatesStaySeparatedForAllThreeStorageTypes() {
+        final TargetRegistry registry = new TargetRegistry();
+        final TransferTarget returnsToSource = new TransferTarget(UUID.randomUUID(), 0, 0, 64, 0);
+        final TransferTarget safe = new TransferTarget(UUID.randomUUID(), 0, 1, 64, 0);
+        registry.register(returnsToSource);
+        registry.register(safe);
+        registry.setRoute(0, TargetRegistry.Route.specific(safe.getId()));
+        registry.setRoute(1, TargetRegistry.Route.specific(returnsToSource.getId()));
+        registry.setRoute(2, TargetRegistry.Route.specific(Arrays.asList(safe.getId(), returnsToSource.getId())));
+        for (int type = 0; type < 3; type++) {
+            final boolean[] mask = new boolean[8];
+            mask[type] = true;
+            final RouteGraph.Device<Object> device = new RouteGraph.Device<Object>() {
+
+                @Override
+                public Object sourceGrid() {
+                    return b;
+                }
+
+                @Override
+                public long revision() {
+                    return 0;
+                }
+
+                @Override
+                public List<TransferTarget> candidates() {
+                    return registry.routedBindings(mask);
+                }
+
+                @Override
+                public RouteGraph.Link<Object> resolve(TransferTarget target) {
+                    return new RouteGraph.Link<>(
+                        target.getId()
+                            .equals(returnsToSource.getId()) ? a : c,
+                        () -> true);
+                }
+            };
+            this.topology.devices.put(this.b, Collections.singletonList(device));
+            final RouteGraph<Object> graph = this.graph(this.b);
+            finish(graph);
+            assertEquals(type != 0, graph.blocks(this.b));
+        }
+    }
+
     private RouteGraph<Object> graph(final Object... destinations) {
         final List<RouteGraph.Link<Object>> roots = new ArrayList<>();
         for (final Object destination : destinations) {

@@ -70,7 +70,11 @@ public final class ItemNetworkBindingTool extends Item {
             player.addChatMessage(
                 new ChatComponentTranslation(
                     MESSAGE + result.outcome.name()
-                        .toLowerCase(Locale.ROOT)));
+                        .toLowerCase(Locale.ROOT),
+                    world.provider.dimensionId,
+                    x,
+                    y,
+                    z));
         } catch (final RuntimeException failure) {
             METransferDriveMod.LOG.warn("ME network binding failed at {},{},{}", x, y, z, failure);
             player.addChatMessage(new ChatComponentTranslation(MESSAGE + "api_failure"));

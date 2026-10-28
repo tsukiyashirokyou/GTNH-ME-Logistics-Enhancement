@@ -1,11 +1,13 @@
 package com.kyou.metransferdrive.transfer;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.nbt.NBTTagString;
 
 import com.kyou.metransferdrive.tile.DriveSlotLayout;
 
@@ -16,7 +18,7 @@ final class TargetRegistryNbt {
 
     static NBTTagCompound write(final TargetRegistry registry) {
         final NBTTagCompound data = new NBTTagCompound();
-        data.setInteger("version", 1);
+        data.setInteger("version", 2);
         final NBTTagList targets = new NBTTagList();
         for (final TransferTarget target : registry.getTargets()) {
             final NBTTagCompound entry = new NBTTagCompound();
@@ -42,11 +44,12 @@ final class TargetRegistryNbt {
                 "mode",
                 route.getMode()
                     .name());
-            if (route.getTargetId() != null) {
-                entry.setString(
-                    "targetId",
-                    route.getTargetId()
-                        .toString());
+            if (route.getMode() == TargetRegistry.Mode.SPECIFIC) {
+                final NBTTagList selected = new NBTTagList();
+                for (final UUID id : route.getTargetIds()) {
+                    selected.appendTag(new NBTTagString(id.toString()));
+                }
+                entry.setTag("targetIds", selected);
             }
             routes.appendTag(entry);
         }
@@ -55,7 +58,8 @@ final class TargetRegistryNbt {
     }
 
     static TargetRegistry read(final NBTTagCompound data) {
-        require(data.hasKey("version", 3) && data.getInteger("version") == 1);
+        require(data.hasKey("version", 3) && (data.getInteger("version") == 1 || data.getInteger("version") == 2));
+        final int version = data.getInteger("version");
         require(data.hasKey("targets", 9) && data.hasKey("routes", 9));
         final TargetRegistry registry = new TargetRegistry();
         final NBTTagList targets = data.getTagList("targets", 10);
@@ -91,14 +95,27 @@ final class TargetRegistryNbt {
                     route = TargetRegistry.Route.automatic();
                     break;
                 case SPECIFIC:
-                    require(entry.hasKey("targetId", 8));
-                    route = TargetRegistry.Route.specific(UUID.fromString(entry.getString("targetId")));
+                    if (version == 1) {
+                        require(entry.hasKey("targetId", 8) && !entry.hasKey("targetIds"));
+                        route = TargetRegistry.Route.specific(uuid(entry.getString("targetId")));
+                    } else {
+                        require(entry.hasKey("targetIds", 9) && !entry.hasKey("targetId"));
+                        final NBTTagList selected = entry.getTagList("targetIds", 8);
+                        require(
+                            selected.equals(entry.getTag("targetIds"))
+                                && selected.tagCount() <= TargetRegistry.MAX_TARGETS);
+                        final Set<UUID> selectedIds = new LinkedHashSet<>();
+                        for (int selectedIndex = 0; selectedIndex < selected.tagCount(); selectedIndex++) {
+                            require(selectedIds.add(uuid(selected.getStringTagAt(selectedIndex))));
+                        }
+                        route = TargetRegistry.Route.specific(selectedIds);
+                    }
                     break;
                 default:
                     route = TargetRegistry.Route.unassigned();
                     break;
             }
-            require(mode == TargetRegistry.Mode.SPECIFIC || !entry.hasKey("targetId"));
+            require(mode == TargetRegistry.Mode.SPECIFIC || !entry.hasKey("targetId") && !entry.hasKey("targetIds"));
             registry.setRoute(group, route);
         }
         return registry;
@@ -120,11 +137,20 @@ final class TargetRegistryNbt {
                 && entry.hasKey("y", 3)
                 && entry.hasKey("z", 3));
         return new TransferTarget(
-            UUID.fromString(entry.getString("id")),
+            uuid(entry.getString("id")),
             entry.getInteger("dimension"),
             entry.getInteger("x"),
             entry.getInteger("y"),
             entry.getInteger("z"));
+    }
+
+    private static UUID uuid(final String value) {
+        require(value.length() == 36);
+        final UUID id = UUID.fromString(value);
+        require(
+            id.toString()
+                .equalsIgnoreCase(value));
+        return id;
     }
 
     private static void require(final boolean valid) {

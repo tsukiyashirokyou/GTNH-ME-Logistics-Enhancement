@@ -19,6 +19,7 @@ public final class BindingToolLogic {
         SOURCE_ID_MISMATCH,
         DIFFERENT_DIMENSION,
         INVALID_TARGET,
+        TARGET_UNLOADED,
         LOCKED,
         PERMISSION_DENIED,
         SELF_GRID,
@@ -121,7 +122,7 @@ public final class BindingToolLogic {
             return result(Outcome.DIFFERENT_DIMENSION);
         }
         if (!context.isLoaded(clicked)) {
-            return result(Outcome.INVALID_TARGET);
+            return result(Outcome.TARGET_UNLOADED);
         }
         final Source candidate = context.sourceAt(clicked);
         if (candidate != null) {
@@ -188,14 +189,15 @@ public final class BindingToolLogic {
                 sameGrid = true;
             }
         }
-        if (!duplicate && previous.size() >= TargetRegistry.MAX_TARGETS) {
+        if (duplicate) {
+            return result(Outcome.DUPLICATE_INTERFACE);
+        }
+        if (previous.size() >= TargetRegistry.MAX_TARGETS) {
             return result(Outcome.LIMIT_REACHED);
         }
         // All mutation goes through the device's existing validated registration entry point.
         source.register(target);
-        return result(
-            duplicate ? Outcome.DUPLICATE_INTERFACE
-                : targetGrid == null ? Outcome.BOUND_PENDING : sameGrid ? Outcome.BOUND_SAME_GRID : Outcome.BOUND);
+        return result(targetGrid == null ? Outcome.BOUND_PENDING : sameGrid ? Outcome.BOUND_SAME_GRID : Outcome.BOUND);
     }
 
     private static Result result(final Outcome outcome) {

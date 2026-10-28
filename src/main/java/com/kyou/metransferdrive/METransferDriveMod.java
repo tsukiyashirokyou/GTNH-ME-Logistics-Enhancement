@@ -7,6 +7,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.kyou.metransferdrive.gui.DriveGuiNetwork;
+import com.kyou.metransferdrive.transfer.TransferScheduler;
 
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
@@ -59,6 +60,7 @@ public class METransferDriveMod {
 
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
+        TransferScheduler.clear();
         DriveGuiNetwork.clearServerQueue();
     }
 }

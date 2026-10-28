@@ -62,6 +62,7 @@ public class BindingToolLogicTest {
         assertEquals(
             BindingToolLogic.Outcome.DUPLICATE_INTERFACE,
             this.use(this.selection(), this.targetPosition).outcome);
+        assertEquals(1, this.source.registrations);
         assertEquals(
             1,
             this.source.registry.getTargets()
@@ -154,7 +155,7 @@ public class BindingToolLogicTest {
     @Test
     public void unloadedTargetIsNotLookedUp() {
         this.context.unloaded.add(5);
-        assertEquals(BindingToolLogic.Outcome.INVALID_TARGET, this.use(this.selection(), this.targetPosition).outcome);
+        assertEquals(BindingToolLogic.Outcome.TARGET_UNLOADED, this.use(this.selection(), this.targetPosition).outcome);
     }
 
     @Test
@@ -232,6 +233,7 @@ public class BindingToolLogicTest {
         assertEquals(
             BindingToolLogic.Outcome.DUPLICATE_INTERFACE,
             this.use(this.selection(), this.targetPosition).outcome);
+        assertEquals(1, this.source.registrations);
         this.context.grids.put(6, new Object());
         assertEquals(BindingToolLogic.Outcome.LIMIT_REACHED, this.use(this.selection(), position(6)).outcome);
         assertEquals(

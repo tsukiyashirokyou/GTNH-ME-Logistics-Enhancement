@@ -119,6 +119,93 @@ public class DriveGuiNetworkTest {
         assertTrue(DriveGuiLogic.validHotbarSwap(0, 0, 64));
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void malformedUtf8IsRejectedRatherThanNormalizedAsAnAlias() {
+        final ByteBuf buffer = header();
+        try {
+            buffer.writeShort(2)
+                .writeByte(0xC3)
+                .writeByte(0x28)
+                .writeShort(1)
+                .writeByte('0');
+            new DriveGuiNetwork.ActionMessage().fromBytes(buffer);
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    public void toggleRequestRetainsStableIdAndRevision() {
+        final DriveGuiNetwork.ActionMessage request = new DriveGuiNetwork.ActionMessage();
+        request.window = 1;
+        request.action = new DriveGuiAction(
+            DriveGuiAction.Kind.TOGGLE_TARGET,
+            UUID.randomUUID(),
+            55,
+            7,
+            UUID.randomUUID(),
+            "",
+            "");
+        final ByteBuf buffer = Unpooled.buffer();
+        try {
+            request.toBytes(buffer);
+            final DriveGuiNetwork.ActionMessage decoded = new DriveGuiNetwork.ActionMessage();
+            decoded.fromBytes(buffer);
+            assertEquals(request.action.target, decoded.action.target);
+            assertEquals(request.action.session, decoded.action.session);
+            assertEquals(55, decoded.action.revision);
+            assertEquals(7, decoded.action.group);
+            assertEquals(DriveGuiAction.Kind.TOGGLE_TARGET, decoded.action.kind);
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
+    public void maximumSelectionsAndUnicodeAliasesFitTheNativeSnapshotBudget() {
+        final net.minecraft.nbt.NBTTagCompound state = new net.minecraft.nbt.NBTTagCompound();
+        final net.minecraft.nbt.NBTTagList targets = new net.minecraft.nbt.NBTTagList();
+        final net.minecraft.nbt.NBTTagList ids = new net.minecraft.nbt.NBTTagList();
+        final java.util.Random random = new java.util.Random(54321);
+        for (int index = 0; index < 64; index++) {
+            final net.minecraft.nbt.NBTTagCompound target = new net.minecraft.nbt.NBTTagCompound();
+            final String id = UUID.randomUUID()
+                .toString();
+            ids.appendTag(new net.minecraft.nbt.NBTTagString(id));
+            target.setString("id", id);
+            final StringBuilder alias = new StringBuilder();
+            for (int character = 0; character < 64; character++) {
+                alias.append((char) (0x4E00 + random.nextInt(20000)));
+            }
+            target.setString("name", alias.toString());
+            target.setString("status", "OFFLINE_OR_FORBIDDEN");
+            target.setInteger("priority", Integer.MAX_VALUE);
+            target.setInteger("dimension", -123);
+            target.setInteger("x", 29999999);
+            target.setInteger("y", 255);
+            target.setInteger("z", -29999999);
+            targets.appendTag(target);
+        }
+        state.setTag("targets", targets);
+        for (int group = 0; group < 8; group++) {
+            state.setTag("selected" + group, ids.copy());
+            state.setString("route" + group, "SPECIFIC");
+        }
+        final DriveGuiNetwork.StateMessage request = new DriveGuiNetwork.StateMessage();
+        request.window = 1;
+        request.state = state;
+        final ByteBuf buffer = Unpooled.buffer();
+        try {
+            request.toBytes(buffer);
+            assertTrue(buffer.readableBytes() <= 32773);
+            final DriveGuiNetwork.StateMessage decoded = new DriveGuiNetwork.StateMessage();
+            decoded.fromBytes(buffer);
+            assertEquals(state, decoded.state);
+        } finally {
+            buffer.release();
+        }
+    }
+
     private static ByteBuf header() {
         return Unpooled.buffer()
             .writeInt(1)

@@ -12,6 +12,7 @@ import net.minecraft.util.StatCollector;
 
 import org.lwjgl.input.Keyboard;
 
+import com.kyou.metransferdrive.gui.ConfigurationInput;
 import com.kyou.metransferdrive.gui.ContainerTransferDrive;
 import com.kyou.metransferdrive.gui.DriveGuiAction;
 import com.kyou.metransferdrive.gui.DriveGuiNetwork;
@@ -64,11 +65,12 @@ public final class GuiTransferDrive extends GuiContainer {
         this.button(17, 257, 167, 55, tr("save"));
         this.button(18, 183, 187, 129, tr("delete"));
         for (int row = 0; row < 4; row++) {
-            this.button(20 + row, 183, 23 + row * 17, 129, "");
+            this.button(20 + row, 203, 23 + row * 17, 109, "");
+            this.button(30 + row, 183, 23 + row * 17, 18, "");
         }
-        this.period = this.field(9, 147, 65, 5);
-        this.name = this.field(183, 135, 129, 64);
-        this.priority = this.field(183, 168, 69, 11);
+        this.period = this.field(9, 147, 65, ConfigurationInput.MAX_NUMBER_LENGTH);
+        this.name = this.field(183, 135, 129, ConfigurationInput.MAX_TEXT_BYTES);
+        this.priority = this.field(183, 168, 69, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.period.setText(
             Integer.toString(
                 this.state()
@@ -95,6 +97,24 @@ public final class GuiTransferDrive extends GuiContainer {
     private NBTTagList targets() {
         return this.state()
             .getTagList("targets", 10);
+    }
+
+    private NBTTagList chosen() {
+        return this.state()
+            .getTagList(
+                "selected" + this.state()
+                    .getInteger("page"),
+                8);
+    }
+
+    private boolean isChosen(final String id) {
+        final NBTTagList selected = this.chosen();
+        for (int index = 0; index < selected.tagCount(); index++) {
+            if (id.equals(selected.getStringTagAt(index))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private NBTTagCompound selected() {
@@ -158,7 +178,7 @@ public final class GuiTransferDrive extends GuiContainer {
                     .hasKey("session")
                     && button.id != this.state()
                         .getInteger("page");
-            } else if (button.id == 12 || button.id == 17 || button.id == 18) {
+            } else if (button.id == 17 || button.id == 18) {
                 button.enabled &= this.selected() != null;
             } else if (button.id == 13) {
                 button.displayString = tr(
@@ -170,22 +190,24 @@ public final class GuiTransferDrive extends GuiContainer {
                     : (this.targetPage + 1) * 4 < this.targets()
                         .tagCount();
             } else if (button.id >= 20) {
-                final int index = this.targetPage * 4 + button.id - 20;
+                final boolean checkbox = button.id >= 30;
+                final int index = this.targetPage * 4 + button.id - (checkbox ? 30 : 20);
                 button.visible = index < this.targets()
                     .tagCount();
-                button.enabled = button.visible;
+                button.enabled = button.visible && (!checkbox || editable);
                 if (button.visible) {
                     final NBTTagCompound target = this.targets()
                         .getCompoundTagAt(index);
-                    button.displayString = this.fontRendererObj.trimStringToWidth(
-                        (target.getString("id")
-                            .equals(this.selectedId) ? ">" : "") + (index + 1)
-                            + ". "
-                            + target.getString("name")
-                            + " ["
-                            + target.getInteger("priority")
-                            + "]",
-                        121);
+                    button.displayString = checkbox ? (this.isChosen(target.getString("id")) ? "x" : "-")
+                        : this.fontRendererObj.trimStringToWidth(
+                            (target.getString("id")
+                                .equals(this.selectedId) ? ">" : "") + (index + 1)
+                                + ". "
+                                + target.getString("name")
+                                + " ["
+                                + target.getInteger("priority")
+                                + "]",
+                            101);
                 }
             }
         }
@@ -205,13 +227,25 @@ public final class GuiTransferDrive extends GuiContainer {
                 this.state()
                     .getLong("revision"));
         } else if (button.id >= 20) {
-            final int index = this.targetPage * 4 + button.id - 20;
+            final boolean checkbox = button.id >= 30;
+            final int index = this.targetPage * 4 + button.id - (checkbox ? 30 : 20);
             if (index < this.targets()
                 .tagCount()) {
-                this.select(
-                    this.targets()
-                        .getCompoundTagAt(index)
-                        .getString("id"));
+                final String id = this.targets()
+                    .getCompoundTagAt(index)
+                    .getString("id");
+                if (checkbox) {
+                    this.request(
+                        DriveGuiAction.Kind.TOGGLE_TARGET,
+                        group,
+                        "",
+                        "",
+                        this.state()
+                            .getLong("revision"),
+                        id);
+                } else {
+                    this.select(id);
+                }
             }
         } else {
             switch (button.id) {
@@ -219,7 +253,7 @@ public final class GuiTransferDrive extends GuiContainer {
                 case 11:
                 case 12:
                     final DriveGuiAction.Kind kind = button.id == 10 ? DriveGuiAction.Kind.UNASSIGNED
-                        : button.id == 11 ? DriveGuiAction.Kind.AUTOMATIC : DriveGuiAction.Kind.SPECIFIC;
+                        : button.id == 11 ? DriveGuiAction.Kind.AUTOMATIC : DriveGuiAction.Kind.SPECIFIC_MODE;
                     this.request(
                         kind,
                         group,
@@ -276,12 +310,24 @@ public final class GuiTransferDrive extends GuiContainer {
 
     private void request(final DriveGuiAction.Kind kind, final int group, final String text, final String number,
         final long revision) {
+        this.request(kind, group, text, number, revision, this.selectedId);
+    }
+
+    private void request(final DriveGuiAction.Kind kind, final int group, final String text, final String number,
+        final long revision, final String targetId) {
         if (!this.state()
             .hasKey("session")) {
             return;
         }
         try {
-            final UUID id = this.selectedId.isEmpty() ? null : UUID.fromString(this.selectedId);
+            final UUID id = targetId.isEmpty() ? null : UUID.fromString(targetId);
+            final String normalizedText = kind == DriveGuiAction.Kind.UPDATE_TARGET ? ConfigurationInput.alias(text)
+                : text;
+            final String normalizedNumber = kind == DriveGuiAction.Kind.PERIOD
+                ? Integer.toString(ConfigurationInput.clampInteger(number, 1, 86400))
+                : kind == DriveGuiAction.Kind.UPDATE_TARGET
+                    ? Integer.toString(ConfigurationInput.clampInteger(number, Integer.MIN_VALUE, Integer.MAX_VALUE))
+                    : number;
             DriveGuiNetwork.request(
                 this.container.windowId,
                 new DriveGuiAction(
@@ -292,8 +338,8 @@ public final class GuiTransferDrive extends GuiContainer {
                     revision,
                     group,
                     id,
-                    text,
-                    number));
+                    normalizedText,
+                    normalizedNumber));
         } catch (IllegalArgumentException failure) {
             this.localError = tr("invalid");
         }
@@ -347,7 +393,7 @@ public final class GuiTransferDrive extends GuiContainer {
             183,
             7,
             129);
-        this.line(tr("source_only"), 9, 68, 162);
+        this.line(tr("transfer_types"), 9, 68, 162);
         final int group = this.state()
             .getInteger("page");
         this.line(
@@ -361,17 +407,20 @@ public final class GuiTransferDrive extends GuiContainer {
             9,
             81,
             162);
-        final String routeId = this.state()
-            .getString("target" + group);
-        for (int index = 0; index < this.targets()
-            .tagCount(); index++) {
-            final NBTTagCompound target = this.targets()
-                .getCompoundTagAt(index);
-            if (target.getString("id")
-                .equals(routeId)) {
-                this.line(target.getString("name"), 9, 93, 162);
-            }
-        }
+        final int chosen = this.chosen()
+            .tagCount();
+        final String mode = this.state()
+            .getString("route" + group);
+        this.line(
+            "AUTOMATIC".equals(mode) ? tr(
+                "automatic_targets",
+                this.targets()
+                    .tagCount())
+                : "SPECIFIC".equals(mode) ? tr(chosen == 0 ? "no_selected_targets" : "selected_count", chosen)
+                    : tr("transfer_disabled"),
+            9,
+            93,
+            162);
         this.line(tr("seconds"), 79, 151, 36);
         this.line(
             (this.targetPage + 1) + " / "
@@ -440,6 +489,32 @@ public final class GuiTransferDrive extends GuiContainer {
         this.period.drawTextBox();
         this.name.drawTextBox();
         this.priority.drawTextBox();
+        if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 172
+            && mouseY >= this.guiTop + 81
+            && mouseY < this.guiTop + 104) {
+            final java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add(
+                tr(
+                    "selected_count",
+                    this.chosen()
+                        .tagCount()));
+            lines.add(tr("select_hint"));
+            for (int index = 0; index < this.targets()
+                .tagCount(); index++) {
+                final NBTTagCompound target = this.targets()
+                    .getCompoundTagAt(index);
+                if (this.isChosen(target.getString("id"))) {
+                    lines.add(target.getString("name") + " [" + target.getInteger("priority") + "]");
+                }
+            }
+            // The full selection remains visible through the four-row target pages.
+            if (lines.size() > 10) {
+                lines.subList(10, lines.size())
+                    .clear();
+                lines.add(tr("selection_pages"));
+            }
+            this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
+        }
         if (mouseX >= this.guiLeft + 180 && mouseY >= this.guiTop + 23
             && mouseX < this.guiLeft + this.xSize
             && mouseY < this.guiTop + this.ySize) {

@@ -1,5 +1,7 @@
 package com.kyou.metransferdrive.gui;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import com.kyou.metransferdrive.tile.DriveSlotLayout;
@@ -24,6 +26,8 @@ public final class DriveGuiLogic {
         void setPage(int group);
 
         boolean hasTarget(UUID id);
+
+        TargetRegistry.Route getRoute(int group);
 
         void setRoute(int group, TargetRegistry.Route route);
 
@@ -63,11 +67,28 @@ public final class DriveGuiLogic {
                 case UNASSIGNED:
                 case AUTOMATIC:
                 case SPECIFIC:
+                case SPECIFIC_MODE:
+                case TOGGLE_TARGET:
                     if (!validGroup(action.group)) {
                         return "invalid";
                     }
                     final TargetRegistry.Route route;
-                    if (action.kind == DriveGuiAction.Kind.SPECIFIC) {
+                    if (action.kind == DriveGuiAction.Kind.SPECIFIC_MODE) {
+                        route = TargetRegistry.Route.specific(
+                            context.getRoute(action.group)
+                                .getTargetIds());
+                    } else if (action.kind == DriveGuiAction.Kind.TOGGLE_TARGET) {
+                        if (!context.hasTarget(action.target)) {
+                            return "stale";
+                        }
+                        final Set<UUID> selected = new LinkedHashSet<>(
+                            context.getRoute(action.group)
+                                .getTargetIds());
+                        if (!selected.remove(action.target)) {
+                            selected.add(action.target);
+                        }
+                        route = TargetRegistry.Route.specific(selected);
+                    } else if (action.kind == DriveGuiAction.Kind.SPECIFIC) {
                         if (!context.hasTarget(action.target)) {
                             return "stale";
                         }
@@ -79,10 +100,8 @@ public final class DriveGuiLogic {
                     context.setRoute(action.group, route);
                     break;
                 case PERIOD:
-                    final int seconds = integer(action.number);
-                    if (seconds < TransferClock.MIN_SECONDS || seconds > TransferClock.MAX_SECONDS) {
-                        return "invalid";
-                    }
+                    final int seconds = ConfigurationInput
+                        .clampInteger(action.number, TransferClock.MIN_SECONDS, TransferClock.MAX_SECONDS);
                     context.setPeriod(seconds);
                     break;
                 case ACCESS:
@@ -96,7 +115,10 @@ public final class DriveGuiLogic {
                     if (!context.hasTarget(action.target)) {
                         return "stale";
                     }
-                    context.updateTarget(action.target, action.text, integer(action.number));
+                    context.updateTarget(
+                        action.target,
+                        ConfigurationInput.alias(action.text),
+                        ConfigurationInput.clampInteger(action.number, Integer.MIN_VALUE, Integer.MAX_VALUE));
                     break;
                 case DELETE_TARGET:
                     if (!context.hasTarget(action.target)) {

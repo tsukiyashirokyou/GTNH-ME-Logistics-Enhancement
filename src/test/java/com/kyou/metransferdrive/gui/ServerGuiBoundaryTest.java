@@ -17,7 +17,10 @@ public class ServerGuiBoundaryTest {
         for (String type : new String[] { "CommonProxy", "METransferDriveMod", "RecipeLoader", "gui/DriveGuiHandler",
             "gui/ContainerTransferDrive", "gui/DriveGuiNetwork", "gui/DriveGuiNetwork$ActionHandler",
             "gui/DriveGuiNetwork$StateHandler", "gui/DriveGuiNetwork$ServerTicks", "gui/DriveGuiNetwork$ClickHandler",
-            "gui/DriveGuiNetwork$ClickMessage" }) {
+            "gui/DriveGuiNetwork$ClickMessage", "transfer/TransferStorageTypes", "transfer/SourceCellAccess",
+            "transfer/AETransferController", "transfer/RecoveryEvidence", "gui/ConfigurationInput",
+            "transfer/TransferScheduler", "transfer/TransferEnergy", "transfer/TransferEnergyAccount",
+            "transfer/TransferPowerBudget" }) {
             final String resource = "/com/kyou/metransferdrive/" + type + ".class";
             try (InputStream input = ServerGuiBoundaryTest.class.getResourceAsStream(resource)) {
                 assertNotNull(resource, input);
@@ -31,6 +34,8 @@ public class ServerGuiBoundaryTest {
                 assertFalse(resource, constants.contains("net/minecraft/client/"));
                 assertFalse(resource, constants.contains("com/kyou/metransferdrive/client/"));
                 assertFalse(resource, constants.contains("org/lwjgl/"));
+                assertFalse(resource, constants.contains("thaumicenergistics/"));
+                assertFalse(resource, constants.contains("thaumcraft/"));
             }
         }
     }

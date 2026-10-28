@@ -2,11 +2,14 @@ package com.kyou.metransferdrive.transfer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import com.kyou.metransferdrive.tile.DriveSlotLayout;
@@ -26,23 +29,34 @@ public final class TargetRegistry {
     public static final class Route {
 
         private final Mode mode;
-        private final UUID targetId;
+        private final Set<UUID> targetIds;
 
-        private Route(final Mode mode, final UUID targetId) {
+        private Route(final Mode mode, final Collection<UUID> targetIds) {
             this.mode = mode;
-            this.targetId = targetId;
+            if (targetIds.size() > MAX_TARGETS || targetIds.contains(null)) {
+                throw new IllegalArgumentException("Invalid route target set");
+            }
+            this.targetIds = Collections.unmodifiableSet(new LinkedHashSet<>(targetIds));
         }
 
         public static Route unassigned() {
-            return new Route(Mode.UNASSIGNED, null);
+            return new Route(Mode.UNASSIGNED, Collections.emptySet());
         }
 
         public static Route automatic() {
-            return new Route(Mode.AUTOMATIC, null);
+            return new Route(Mode.AUTOMATIC, Collections.emptySet());
         }
 
         public static Route specific(final UUID id) {
-            return new Route(Mode.SPECIFIC, Objects.requireNonNull(id, "targetId"));
+            return specific(Collections.singleton(Objects.requireNonNull(id, "targetId")));
+        }
+
+        public static Route specific(final Collection<UUID> ids) {
+            return new Route(Mode.SPECIFIC, Objects.requireNonNull(ids, "targetIds"));
+        }
+
+        public Set<UUID> getTargetIds() {
+            return this.targetIds;
         }
 
         public Mode getMode() {
@@ -50,7 +64,8 @@ public final class TargetRegistry {
         }
 
         public UUID getTargetId() {
-            return this.targetId;
+            return this.targetIds.size() == 1 ? this.targetIds.iterator()
+                .next() : null;
         }
     }
 
@@ -91,8 +106,10 @@ public final class TargetRegistry {
     public void remove(final UUID id) {
         this.targets.remove(id);
         for (int group = 0; group < this.routes.length; group++) {
-            if (id.equals(this.routes[group].getTargetId())) {
-                this.routes[group] = Route.unassigned();
+            if (this.routes[group].targetIds.contains(id)) {
+                final Set<UUID> remaining = new LinkedHashSet<>(this.routes[group].targetIds);
+                remaining.remove(id);
+                this.routes[group] = remaining.isEmpty() ? Route.unassigned() : Route.specific(remaining);
             }
         }
     }
@@ -100,7 +117,8 @@ public final class TargetRegistry {
     public void setRoute(final int group, final Route route) {
         DriveSlotLayout.slot(group, 0);
         Objects.requireNonNull(route, "route");
-        if (route.getMode() == Mode.SPECIFIC && !this.targets.containsKey(route.getTargetId())) {
+        if (!this.targets.keySet()
+            .containsAll(route.targetIds)) {
             throw new IllegalArgumentException("Route references an unknown target");
         }
         this.routes[group] = route;
@@ -141,9 +159,8 @@ public final class TargetRegistry {
         for (final TransferTarget target : this.targets.values()) {
             for (int group = 0; group < this.routes.length; group++) {
                 final Route route = this.routes[group];
-                if (eligibleGroups[group]
-                    && (route.mode == Mode.AUTOMATIC || route.mode == Mode.SPECIFIC && target.getId()
-                        .equals(route.targetId))) {
+                if (eligibleGroups[group] && (route.mode == Mode.AUTOMATIC
+                    || route.mode == Mode.SPECIFIC && route.targetIds.contains(target.getId()))) {
                     result.add(target);
                     break;
                 }

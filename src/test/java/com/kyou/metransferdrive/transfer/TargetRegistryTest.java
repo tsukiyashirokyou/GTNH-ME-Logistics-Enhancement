@@ -205,6 +205,53 @@ public class TargetRegistryTest {
         this.registry.routedBindings(new boolean[7]);
     }
 
+    @Test
+    public void deletionKeepsOtherSelectedTargetsAndEveryGroupOwnsItsSelection() {
+        final UUID first = this.registry.register(target(0, 0));
+        final UUID second = this.registry.register(target(1, 0));
+        final java.util.Set<UUID> ids = new java.util.LinkedHashSet<>(java.util.Arrays.asList(first, second));
+        this.registry.setRoute(0, TargetRegistry.Route.specific(ids));
+        ids.clear();
+        this.registry.setRoute(1, TargetRegistry.Route.specific(first));
+        this.registry.remove(first);
+        assertEquals(
+            java.util.Collections.singleton(second),
+            this.registry.getRoute(0)
+                .getTargetIds());
+        assertEquals(
+            TargetRegistry.Mode.UNASSIGNED,
+            this.registry.getRoute(1)
+                .getMode());
+    }
+
+    @Test(expected = UnsupportedOperationException.class)
+    public void selectedTargetIdsCannotMutateARouteSnapshot() {
+        TargetRegistry.Route.specific(java.util.Collections.emptySet())
+            .getTargetIds()
+            .add(UUID.randomUUID());
+    }
+
+    @Test
+    public void allThreeTypeMasksUseOnlyTheirOwnMultiSelectedGroupsForCycleEvidence() {
+        final UUID first = this.registry.register(target(0, 0));
+        final UUID second = this.registry.register(target(1, 0));
+        final UUID third = this.registry.register(target(2, 0));
+        this.registry.setRoute(0, TargetRegistry.Route.specific(first));
+        this.registry.setRoute(1, TargetRegistry.Route.specific(second));
+        this.registry.setRoute(2, TargetRegistry.Route.specific(java.util.Arrays.asList(first, third)));
+        for (int type = 0; type < 3; type++) {
+            final boolean[] mask = new boolean[8];
+            mask[type] = true;
+            final java.util.List<UUID> expected = type == 0 ? java.util.Collections.singletonList(first)
+                : type == 1 ? java.util.Collections.singletonList(second) : java.util.Arrays.asList(first, third);
+            final java.util.List<UUID> actual = new java.util.ArrayList<>();
+            for (TransferTarget target : this.registry.routedBindings(mask)) {
+                actual.add(target.getId());
+            }
+            assertEquals(expected, actual);
+        }
+    }
+
     private static TransferTarget target(final int x, final int priority) {
         return new TransferTarget(UUID.randomUUID(), 0, x, 64, 0, "Target " + x, priority);
     }

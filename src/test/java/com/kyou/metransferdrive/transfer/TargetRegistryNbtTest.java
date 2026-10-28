@@ -149,6 +149,93 @@ public class TargetRegistryNbtTest {
         TargetRegistryNbt.read(data);
     }
 
+    @Test
+    public void v1SingleTargetMigratesToAOneElementSetAndIsSavedAsV2() {
+        final TargetRegistry registry = new TargetRegistry();
+        final TransferTarget target = target(0, 0);
+        registry.register(target);
+        final NBTTagCompound old = TargetRegistryNbt.write(registry);
+        old.setInteger("version", 1);
+        final NBTTagCompound route = old.getTagList("routes", 10)
+            .getCompoundTagAt(4);
+        route.setString("mode", "SPECIFIC");
+        route.setString(
+            "targetId",
+            target.getId()
+                .toString());
+        final TargetRegistry migrated = TargetRegistryNbt.read(old);
+        assertEquals(
+            java.util.Collections.singleton(target.getId()),
+            migrated.getRoute(4)
+                .getTargetIds());
+        assertEquals(
+            2,
+            TargetRegistryNbt.write(migrated)
+                .getInteger("version"));
+    }
+
+    @Test
+    public void multiSelectionAndExplicitEmptySelectionSurviveNbtRoundTrip() {
+        final TargetRegistry registry = new TargetRegistry();
+        final UUID first = registry.register(target(0, 0));
+        final UUID second = registry.register(target(1, 0));
+        registry.setRoute(0, TargetRegistry.Route.specific(java.util.Arrays.asList(first, second)));
+        registry.setRoute(7, TargetRegistry.Route.specific(java.util.Collections.emptySet()));
+        final TargetRegistry loaded = TargetRegistryNbt.read(TargetRegistryNbt.write(registry));
+        assertEquals(
+            registry.getRoute(0)
+                .getTargetIds(),
+            loaded.getRoute(0)
+                .getTargetIds());
+        assertEquals(
+            TargetRegistry.Mode.SPECIFIC,
+            loaded.getRoute(7)
+                .getMode());
+        assertEquals(
+            0,
+            loaded.getRoute(7)
+                .getTargetIds()
+                .size());
+    }
+
+    @Test
+    public void invalidSelectionListsNeverSilentlyResetOrBecomeAutomatic() {
+        final TargetRegistry registry = new TargetRegistry();
+        final UUID first = registry.register(target(0, 0));
+        registry.setRoute(0, TargetRegistry.Route.specific(first));
+        for (String[] ids : new String[][] { { first.toString(), first.toString() }, { UUID.randomUUID()
+            .toString() }, { "1-1-1-1-1" }, { "bad UUID" } }) {
+            final NBTTagCompound data = TargetRegistryNbt.write(registry);
+            final NBTTagList selected = new NBTTagList();
+            for (String id : ids) {
+                selected.appendTag(new net.minecraft.nbt.NBTTagString(id));
+            }
+            data.getTagList("routes", 10)
+                .getCompoundTagAt(0)
+                .setTag("targetIds", selected);
+            try {
+                TargetRegistryNbt.read(data);
+                throw new AssertionError("Invalid route selection accepted");
+            } catch (IllegalArgumentException expected) {
+                // The controller preserves rejected raw configuration in quarantine.
+            }
+        }
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void wrongSelectionElementTypeIsRejected() {
+        final TargetRegistry registry = new TargetRegistry();
+        final UUID first = registry.register(target(0, 0));
+        registry.setRoute(0, TargetRegistry.Route.specific(first));
+        final NBTTagCompound data = TargetRegistryNbt.write(registry);
+        final NBTTagList selected = new NBTTagList();
+        selected.appendTag(new NBTTagCompound());
+        data.getTagList("routes", 10)
+            .getCompoundTagAt(0)
+            .setTag("targetIds", selected);
+        TargetRegistryNbt.read(data);
+    }
+
     private static TransferTarget target(final int x, final int priority) {
         return new TransferTarget(UUID.randomUUID(), 0, x, 64, 0, "Alias " + x, priority);
     }

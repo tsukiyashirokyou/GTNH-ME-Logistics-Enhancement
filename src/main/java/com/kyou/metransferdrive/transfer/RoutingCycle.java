@@ -141,8 +141,8 @@ public final class RoutingCycle<G> {
         final Map<G, Boolean> grids = new IdentityHashMap<>();
         for (final TransferTarget binding : this.bindings) {
             if (route.getMode() == TargetRegistry.Mode.UNASSIGNED
-                || route.getMode() == TargetRegistry.Mode.SPECIFIC && !binding.getId()
-                    .equals(route.getTargetId())) {
+                || route.getMode() == TargetRegistry.Mode.SPECIFIC && !route.getTargetIds()
+                    .contains(binding.getId())) {
                 continue;
             }
             final Target<G> target = this.resolved.get(binding.getId());

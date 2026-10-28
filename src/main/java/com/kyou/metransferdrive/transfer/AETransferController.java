@@ -1,8 +1,5 @@
 package com.kyou.metransferdrive.transfer;
 
-import static appeng.util.item.AEFluidStackType.FLUID_STACK_TYPE;
-import static appeng.util.item.AEItemStackType.ITEM_STACK_TYPE;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,6 +33,7 @@ import appeng.api.networking.storage.IStorageGrid;
 import appeng.api.storage.IMEInventory;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
+import appeng.api.storage.data.IItemList;
 import appeng.me.GridAccessException;
 import appeng.tile.misc.TileInterface;
 import appeng.util.IterationCounter;
@@ -44,14 +42,12 @@ import appeng.util.IterationCounter;
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public final class AETransferController {
 
-    private static final long ITEM_BATCH = 4096;
-    private static final long FLUID_BATCH = 64000;
-    private static final int TYPES_PER_TICK = 4;
     private static final int TARGETS_PER_TICK = 4;
     private final TileMETransferDrive tile;
     private final BaseActionSource actionSource;
     private final TransferClock clock = new TransferClock();
     private final TransferTransaction<IAEStack<?>> transaction;
+    private final TransferEnergyAccount energyAccount;
     private TargetRegistry registry = new TargetRegistry();
     private RoutingCycle<IGrid> cycle;
     private RoutedTransfer<IAEStack<?>, IGrid> routed;
@@ -59,6 +55,8 @@ public final class AETransferController {
     private NBTTagCompound quarantinedRouting;
     private boolean active;
     private boolean ticking;
+    private boolean recoveryDue;
+    private final TransferScheduler.Work scheduledWork = this::runSlice;
     private int nextSlot;
     private int sourceSlot = -1;
     private ItemStack sourceCell;
@@ -80,6 +78,7 @@ public final class AETransferController {
         this.tile = tile;
         this.actionSource = new MachineSource(tile);
         this.transaction = new TransferTransaction<>(tile::markDirty);
+        this.energyAccount = new TransferEnergyAccount(tile::markDirty, TransferPowerBudget.SERVER);
     }
 
     public void tick() {
@@ -96,14 +95,14 @@ public final class AETransferController {
                 return;
             }
             final boolean due = this.clock.tick();
+            if (this.energyAccount.isPending() && !this.transaction.isPending()) {
+                this.stop("recovery_UNCERTAIN");
+                return;
+            }
             if (this.transaction.isPending()) {
-                if (this.transaction.getPhase() == TransferTransaction.Phase.RECOVERABLE && due && this.sameSource()) {
-                    this.transaction.retryReturn(this.source(this.transaction.getKey()));
-                    if (!this.transaction.isPending()) {
-                        this.stop("recovered_to_source");
-                        this.topologyChanged();
-                        return;
-                    }
+                if (this.transaction.getPhase() == TransferTransaction.Phase.RECOVERABLE && due) {
+                    this.recoveryDue = true;
+                    TransferScheduler.enqueue(this.scheduledWork);
                 }
                 this.status = "recovery_" + this.transaction.getPhase()
                     .name();
@@ -119,67 +118,147 @@ public final class AETransferController {
                 }
                 this.active = true;
                 this.nextSlot = 0;
-                this.cycle = new RoutingCycle<>(this.registry, this::sourceGrid, this::resolveEndpoint);
+                this.cycle = null;
                 this.graph = null;
+            }
+            TransferScheduler.enqueue(this.scheduledWork);
+        } catch (final RuntimeException failure) {
+            this.stop("api_failure");
+            METransferDriveMod.LOG.warn("ME Transfer Drive stopped after an AE API failure", failure);
+        } finally {
+            this.ticking = false;
+        }
+    }
+
+    /** The server END event services each queued device once; all AE calls remain on the game thread. */
+    private boolean runSlice(final TransferScheduler.Slice budget) {
+        if (this.ticking) {
+            return this.active || this.recoveryDue;
+        }
+        this.ticking = true;
+        try {
+            if (this.tile.isInvalid() || this.tile.getWorldObj() == null
+                || this.tile.getWorldObj().isRemote
+                || !this.tile.getWorldObj()
+                    .blockExists(this.tile.xCoord, this.tile.yCoord, this.tile.zCoord)
+                || this.tile.getWorldObj()
+                    .getTileEntity(this.tile.xCoord, this.tile.yCoord, this.tile.zCoord) != this.tile) {
+                this.stop("suspended");
+                return false;
+            }
+            if (this.transaction.isPending()) {
+                if (this.energyAccount.isPending()) {
+                    this.recoveryDue = false;
+                    return false;
+                }
+                if (this.transaction.getPhase() != TransferTransaction.Phase.RECOVERABLE) {
+                    this.recoveryDue = false;
+                    return false;
+                }
+                if (this.recoveryDue && budget.transaction()) {
+                    this.recoveryDue = false;
+                    if (this.sameSource()) {
+                        this.transaction.retryReturn(this.source(this.transaction.getKey()));
+                    }
+                    if (!this.transaction.isPending()) {
+                        this.stop("recovered_to_source");
+                        this.topologyChanged();
+                    }
+                }
+                return this.recoveryDue;
+            }
+            if (!this.active) {
+                return false;
+            }
+            if (this.energyAccount.isPending()) {
+                this.stop("recovery_UNCERTAIN");
+                return false;
+            }
+            if (this.tile.hasCellInventoryQuarantine() || this.quarantinedRouting != null) {
+                this.stop("invalid_routing_configuration");
+                return false;
             }
             if (!this.tile.getProxy()
                 .isActive()) {
                 this.stop("source_offline");
-                return;
+                return false;
+            }
+            if (!budget.hasTime()) {
+                return true;
+            }
+            if (this.cycle == null) {
+                this.cycle = new RoutingCycle<>(this.registry, this::sourceGrid, this::resolveEndpoint);
             }
             if (!this.cycle.isPrepared()) {
                 this.cycle.prepare(TARGETS_PER_TICK);
                 this.status = "resolving_targets";
-                return;
+                return true;
             }
-            if (this.types == null) {
-                this.openNextSlot();
-                return;
-            }
-            if (!this.sameSource()) {
-                this.finishSlot();
-                return;
-            }
-            if (this.candidate == null && !this.nextType()) {
-                return;
-            }
-            if (!this.cycle.isTopologyValid()) {
-                this.stop("topology_changed_waiting_next_cycle");
-                return;
-            }
-            if (!this.prepareGraph()) {
-                return;
-            }
-            final IAEStackType<?> type = this.sourceInventory.getStackType();
-            final IAEStack<?> identity = this.candidate.copy()
-                .setStackSize(1)
-                .setCraftable(false);
-            this.unexpectedReturn = null;
-            this.blockedByCycle = false;
-            final long delivered = this.routed.step(
-                type == ITEM_STACK_TYPE ? ITEM_BATCH : FLUID_BATCH,
-                this.transaction,
-                this.source(identity),
-                target -> {
-                    this.transactionTargetId = target.getBinding()
-                        .getId();
-                    return this.destination(identity, target);
-                },
-                amount -> this.reserveEnergy(amount, type.getAmountPerUnit()));
-            if (this.transaction.isPending()) {
-                this.stop(
-                    "recovery_" + this.transaction.getPhase()
-                        .name());
-                METransferDriveMod.LOG.warn(
-                    "ME Transfer Drive stopped: {} at {},{},{}",
-                    this.status,
-                    this.tile.xCoord,
-                    this.tile.yCoord,
-                    this.tile.zCoord);
-            } else {
+            while (this.active && budget.nextStep()) {
+                if (this.types == null) {
+                    if (!budget.openCell()) {
+                        break;
+                    }
+                    this.openNextSlot();
+                    continue;
+                }
+                if (!this.sameSource()) {
+                    this.finishSlot();
+                    continue;
+                }
+                if (this.candidate == null && !this.nextType(budget)) {
+                    if (this.types != null) {
+                        break;
+                    }
+                    continue;
+                }
+                // Admit validation + transfer together: expensive proofs must not starve an already admitted attempt.
+                if (!budget.transaction()) {
+                    break;
+                }
                 if (!this.cycle.isTopologyValid()) {
                     this.stop("topology_changed_waiting_next_cycle");
-                    return;
+                    break;
+                }
+                // Every transaction keeps its own fresh graph/topology checks, including within the same Tick.
+                if (!this.prepareGraph()) {
+                    break;
+                }
+                final IAEStackType<?> type = this.sourceInventory.getStackType();
+                final IAEStack<?> identity = this.candidate.copy()
+                    .setStackSize(1)
+                    .setCraftable(false);
+                final IAEStack current = this.sourceInventory
+                    .getAvailableItem((IAEStack) identity, IterationCounter.fetchNewId());
+                this.routed.limitRemaining(this.quantity(identity, current, Long.MAX_VALUE));
+                if (this.routed.isFinished()) {
+                    this.candidate = null;
+                    this.routed = null;
+                    continue;
+                }
+                this.unexpectedReturn = null;
+                this.blockedByCycle = false;
+                final long delivered = this.routed
+                    .step(TransferStorageTypes.batchLimit(type), this.transaction, this.source(identity), target -> {
+                        this.transactionTargetId = target.getBinding()
+                            .getId();
+                        return this.destination(identity, target);
+                    }, this.energyFor(type.getAmountPerUnit()));
+                if (this.transaction.isPending()) {
+                    this.stop(
+                        "recovery_" + this.transaction.getPhase()
+                            .name());
+                    METransferDriveMod.LOG.warn(
+                        "ME Transfer Drive stopped: {} at {},{},{}",
+                        this.status,
+                        this.tile.xCoord,
+                        this.tile.yCoord,
+                        this.tile.zCoord);
+                    break;
+                }
+                if (!this.cycle.isTopologyValid()) {
+                    this.stop("topology_changed_waiting_next_cycle");
+                    break;
                 }
                 if (this.routed.isFinished()) {
                     this.candidate = null;
@@ -187,6 +266,9 @@ public final class AETransferController {
                 }
                 this.status = delivered > 0 ? "transferring"
                     : this.blockedByCycle ? "cycle_blocked" : "not_accepted_or_no_energy";
+                if (this.energyAccount.isDeferred()) {
+                    break;
+                }
             }
         } catch (final RuntimeException failure) {
             this.stop("api_failure");
@@ -194,6 +276,7 @@ public final class AETransferController {
         } finally {
             this.ticking = false;
         }
+        return this.active;
     }
 
     private void openNextSlot() {
@@ -216,17 +299,18 @@ public final class AETransferController {
             return;
         }
         final IAEStackType<?> type = this.sourceInventory.getStackType();
-        if ((type != ITEM_STACK_TYPE && type != FLUID_STACK_TYPE)
-            || !SourceCellAccess.canTransferFrom(this.sourceInventory)) {
+        if (TransferStorageTypes.batchLimit(type) == 0 || !SourceCellAccess.canTransferFrom(this.sourceInventory)) {
             return;
         }
         // The legacy API snapshots one cell synchronously. SourceCellAccess bounds this to 63 native types.
-        this.types = this.sourceInventory.getAvailableItems(type.createPrimitiveList(), IterationCounter.fetchNewId())
-            .iterator();
+        final IItemList<?> snapshot = this.sourceInventory
+            .getAvailableItems(type.createPrimitiveList(), IterationCounter.fetchNewId());
+        SourceCellAccess.validateSnapshot(type, snapshot);
+        this.types = snapshot.iterator();
     }
 
-    private boolean nextType() {
-        for (int checked = 0; checked < TYPES_PER_TICK; checked++) {
+    private boolean nextType(final TransferScheduler.Slice budget) {
+        while (budget.probeType()) {
             if (!this.types.hasNext()) {
                 this.finishSlot();
                 return false;
@@ -333,24 +417,85 @@ public final class AETransferController {
         }
     }
 
+    private TransferTransaction.Energy energyFor(final int unit) {
+        return new TransferTransaction.Energy() {
+
+            @Override
+            public long reserve(final long amount) {
+                return reserveEnergy(amount, unit);
+            }
+
+            @Override
+            public void settle(final long delivered, final boolean certain) {
+                energyAccount.settle(delivered, certain);
+            }
+
+            @Override
+            public boolean isDeferred() {
+                return energyAccount.isDeferred();
+            }
+        };
+    }
+
     private long reserveEnergy(final long amount, final int amountPerUnit) {
         if (amount <= 0) {
+            this.energyAccount.skip(false);
             return 0;
         }
         try {
             if (!this.tile.getProxy()
                 .isActive()) {
+                this.energyAccount.skip(true);
                 return 0;
             }
+            final IGrid original = this.sourceGrid();
             final IEnergyGrid energy = this.tile.getProxy()
                 .getEnergy();
-            final double cost = (amount + amountPerUnit - 1) / amountPerUnit;
-            final double paid = energy.extractAEPower(cost, Actionable.MODULATE, PowerMultiplier.CONFIG);
-            if (Double.isNaN(paid) || Double.isInfinite(paid) || paid < 0) {
-                throw new IllegalStateException("Invalid AE energy result");
-            }
-            return Math.min(amount, (long) Math.floor(paid * amountPerUnit));
+            final double multiplier = PowerMultiplier.CONFIG.multiply(1.0);
+            return this.energyAccount.bind(original, new TransferEnergyAccount.Port() {
+
+                @Override
+                public boolean valid() {
+                    return !tile.isInvalid() && sourceGrid() == original
+                        && original.<IEnergyGrid>getCache(IEnergyGrid.class) == energy;
+                }
+
+                @Override
+                public boolean infinite() {
+                    return energy.getHasInfiniteStore();
+                }
+
+                @Override
+                public double stored() {
+                    return energy.getStoredPower();
+                }
+
+                @Override
+                public double capacity() {
+                    return energy.getMaxStoredPower();
+                }
+
+                @Override
+                public double idle() {
+                    return energy.getIdlePowerUsage() * multiplier;
+                }
+
+                @Override
+                public double extract(final double physical, final boolean simulate) {
+                    return energy.extractAEPower(
+                        physical,
+                        simulate ? Actionable.SIMULATE : Actionable.MODULATE,
+                        PowerMultiplier.ONE);
+                }
+
+                @Override
+                public double refund(final double physical) {
+                    return energy.injectPower(physical, Actionable.MODULATE);
+                }
+            }, amountPerUnit, multiplier)
+                .reserve(amount);
         } catch (final GridAccessException unavailable) {
+            this.energyAccount.skip(true);
             return 0;
         }
     }
@@ -441,6 +586,11 @@ public final class AETransferController {
     }
 
     private void stop(final String reason) {
+        TransferScheduler.remove(this.scheduledWork);
+        this.recoveryDue = false;
+        if (!this.energyAccount.isPending()) {
+            this.energyAccount.detach();
+        }
         this.active = false;
         this.graph = null;
         this.cycle = null;
@@ -456,7 +606,7 @@ public final class AETransferController {
     }
 
     public boolean hasRecovery() {
-        return this.transaction.isPending();
+        return this.transaction.isPending() || this.energyAccount.isPending();
     }
 
     public void suspend() {
@@ -613,42 +763,18 @@ public final class AETransferController {
         data.removeTag("transferRecovery");
         if (this.quarantinedRecord != null) {
             RecoveryEvidence.write(data, this.quarantinedRecord);
-        } else if (this.hasRecovery()) {
-            final NBTTagCompound recovery = new NBTTagCompound();
-            final IAEStack<?> key = this.transaction.getKey();
-            final NBTTagCompound payload = new NBTTagCompound();
-            key.writeToNBT(payload);
-            recovery.setTag("payload", payload);
-            recovery.setString(
-                "type",
-                key.getStackType()
-                    .getId());
-            recovery.setString(
-                "phase",
-                this.transaction.getPhase()
-                    .name());
-            recovery.setString(
-                "uncertainOperation",
-                this.transaction.getUncertainOperation()
-                    .name());
-            recovery.setInteger("slot", this.sourceSlot);
-            recovery.setLong("requested", this.transaction.getRequested());
-            recovery.setLong("held", this.transaction.getHeld());
-            recovery.setLong("delivered", this.transaction.getDelivered());
-            recovery.setLong("reportedAmount", this.transaction.getReportedAmount());
-            recovery.setString("failure", this.transaction.getFailureDescription());
-            if (this.transactionTargetId != null) {
-                recovery.setString("targetId", this.transactionTargetId.toString());
-            }
-            if (this.unexpectedReturn != null) {
-                recovery.setTag("unexpectedReturn", this.unexpectedReturn.copy());
-            }
-            data.setTag("transferRecovery", recovery);
+        } else if (this.transaction.isPending()) {
+            data.setTag(
+                "transferRecovery",
+                RecoveryEvidence
+                    .snapshot(this.transaction, this.sourceSlot, this.transactionTargetId, this.unexpectedReturn));
         }
+        this.energyAccount.write(data);
     }
 
     public void readFromNBT(final NBTTagCompound data) {
         this.stop("loaded");
+        this.energyAccount.read(data);
         final int seconds = data.getInteger("transferPeriodSeconds");
         this.clock.setSeconds(
             seconds >= TransferClock.MIN_SECONDS && seconds <= TransferClock.MAX_SECONDS ? seconds
@@ -821,15 +947,22 @@ public final class AETransferController {
             }
             if (this.graph.isLimited()) {
                 this.stop("cycle_check_limit");
+                return false;
             }
-            return false;
+            // A device may wait over 20 world ticks for the next slice. Use a newly completed proof now, after
+            // validation.
+            if (this.graph.isComplete() && !this.graph.isFresh()) {
+                this.graph = null;
+                return false;
+            }
+            return this.graph.isComplete();
         }
         return true;
     }
 
     private boolean[] transferableGroups(final IAEStackType<?> type) {
         final boolean[] groups = new boolean[DriveSlotLayout.GROUP_COUNT];
-        if (type != ITEM_STACK_TYPE && type != FLUID_STACK_TYPE) {
+        if (TransferStorageTypes.batchLimit(type) == 0) {
             return groups;
         }
         for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {

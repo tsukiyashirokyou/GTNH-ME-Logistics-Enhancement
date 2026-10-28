@@ -7,6 +7,7 @@ import com.kyou.metransferdrive.gui.DriveGuiHandler;
 import com.kyou.metransferdrive.gui.DriveGuiNetwork;
 import com.kyou.metransferdrive.item.ItemNetworkBindingTool;
 import com.kyou.metransferdrive.tile.TileMETransferDrive;
+import com.kyou.metransferdrive.transfer.TransferScheduler;
 
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
@@ -31,6 +32,7 @@ public class CommonProxy {
     }
 
     public void init(FMLInitializationEvent event) {
+        TransferScheduler.init();
         DriveGuiNetwork.init();
         NetworkRegistry.INSTANCE.registerGuiHandler(METransferDriveMod.instance, new DriveGuiHandler());
     }

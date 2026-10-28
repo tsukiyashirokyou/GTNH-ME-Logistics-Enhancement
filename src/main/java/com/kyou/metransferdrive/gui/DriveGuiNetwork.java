@@ -262,8 +262,12 @@ public final class DriveGuiNetwork {
         if (length > maxBytes || length > buffer.readableBytes()) {
             throw new IllegalArgumentException("GUI string exceeds limit");
         }
-        final String result = buffer.toString(buffer.readerIndex(), length, StandardCharsets.UTF_8);
-        buffer.skipBytes(length);
+        final byte[] bytes = new byte[length];
+        buffer.readBytes(bytes);
+        final String result = new String(bytes, StandardCharsets.UTF_8);
+        if (!java.util.Arrays.equals(bytes, result.getBytes(StandardCharsets.UTF_8))) {
+            throw new IllegalArgumentException("Malformed GUI UTF-8");
+        }
         return result;
     }
 

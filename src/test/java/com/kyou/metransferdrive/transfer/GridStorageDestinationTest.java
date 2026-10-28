@@ -68,6 +68,58 @@ public class GridStorageDestinationTest {
     }
 
     @Test
+    public void essentiaUsesTheSameNativeNetworkPathWithPartialReceptionAndRollback() {
+        final IAEStackType<?> type = type("essentia", 1);
+        final IAEStack<?> aspect = stack(type, IAEStack.class, "aer", 1);
+        assertFalse(aspect.isItem());
+        assertFalse(aspect.isFluid());
+        final Storage external = new Storage();
+        external.simulatedCapacity = 80;
+        external.capacity = 30;
+        final Monitor monitor = new Monitor(type, external.busAdapter());
+        assertEquals(30, this.move(aspect, monitor, 80));
+        assertEquals(70, this.source.count);
+        assertEquals(30, external.stored);
+        assertFalse(this.transaction.isPending());
+    }
+
+    @Test
+    public void essentiaRollbackFailureKeepsKnownRemainderAndCannotReplay() {
+        final IAEStackType<?> type = type("essentia", 1);
+        final IAEStack<?> aspect = stack(type, IAEStack.class, "aer", 1);
+        final Storage external = new Storage();
+        external.simulatedCapacity = 80;
+        external.capacity = 30;
+        final Monitor monitor = new Monitor(type, external.busAdapter());
+        this.source.restoreLimit = 0;
+        assertEquals(30, this.move(aspect, monitor, 80));
+        assertEquals(TransferTransaction.Phase.RECOVERABLE, this.transaction.getPhase());
+        assertEquals(50, this.transaction.getHeld());
+        assertEquals(0, this.move(aspect, monitor, 80));
+        assertEquals(1, monitor.insertions);
+        assertEquals(100, this.source.count + external.stored + this.transaction.getHeld());
+        this.source.restoreLimit = 100;
+        this.transaction.retryReturn(this.source);
+        assertEquals(70, this.source.count);
+        assertFalse(this.transaction.isPending());
+    }
+
+    @Test
+    public void essentiaRejectsAnotherAspectAndOtherStorageTypesAsRemainders() {
+        final IAEStackType<?> type = type("essentia", 1);
+        final IAEStack<?> aspect = stack(type, IAEStack.class, "aer", 1);
+        for (final IAEStack<?> result : new IAEStack<?>[] { stack(type, IAEStack.class, "ignis", 5), this.identity,
+            stack(type, IAEStack.class, "aer", -1), stack(type, IAEStack.class, "aer", 81) }) {
+            try {
+                GridStorageDestination.checkedQuantity(aspect, result, 80);
+                throw new AssertionError("Accepted invalid essentia result");
+            } catch (IllegalStateException expected) {
+                // An actual invalid result is quarantined by the shared transaction algorithm.
+            }
+        }
+    }
+
+    @Test
     public void actualAE2PriorityRoutesToExternalStorageBeforeLowerPriorityNativeStorage() {
         final Storage external = new Storage();
         external.priority = 100;
@@ -399,6 +451,7 @@ public class GridStorageDestinationTest {
     private static final class Source implements TransferTransaction.Source {
 
         long count = 100;
+        long restoreLimit = 100;
         Runnable afterExtract = () -> {};
 
         @Override
@@ -411,8 +464,9 @@ public class GridStorageDestinationTest {
 
         @Override
         public long restore(final long amount) {
-            this.count += amount;
-            return amount;
+            final long restored = Math.min(amount, this.restoreLimit);
+            this.count += restored;
+            return restored;
         }
     }
 
@@ -488,7 +542,7 @@ public class GridStorageDestinationTest {
         }
     }
 
-    private static IAEStackType<?> type(final String id, final int amountPerUnit) {
+    static IAEStackType<?> type(final String id, final int amountPerUnit) {
         return (IAEStackType<?>) Proxy.newProxyInstance(
             IAEStackType.class.getClassLoader(),
             new Class<?>[] { IAEStackType.class },
@@ -504,8 +558,7 @@ public class GridStorageDestinationTest {
             });
     }
 
-    private static IAEStack<?> stack(final IAEStackType<?> type, final Class<?> contract, final String key,
-        final long amount) {
+    static IAEStack<?> stack(final IAEStackType<?> type, final Class<?> contract, final String key, final long amount) {
         return (IAEStack<?>) Proxy.newProxyInstance(
             contract.getClassLoader(),
             new Class<?>[] { contract },
@@ -529,6 +582,15 @@ public class GridStorageDestinationTest {
         @Override
         public Object invoke(final Object proxy, final Method method, final Object[] args) {
             switch (method.getName()) {
+                case "isItem":
+                    return this.contract == IAEItemStack.class;
+                case "isFluid":
+                    return this.contract == IAEFluidStack.class;
+                case "writeToNBT":
+                    final net.minecraft.nbt.NBTTagCompound tag = (net.minecraft.nbt.NBTTagCompound) args[0];
+                    tag.setString("AspectTag", this.key);
+                    tag.setLong("Cnt", this.amount);
+                    return null;
                 case "getStackSize":
                     return this.amount;
                 case "setStackSize":

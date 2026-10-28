@@ -50,6 +50,12 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 
+    // TileEntity callback regressions load AE2's pinned GTNHLib capability superclass.
+    testImplementation("com.github.GTNewHorizons:GTNHLib:0.11.52:dev") { transitive = false }
+
+    // Real pinned optional compatibility API in tests; main links only AE2's registered generic storage API.
+    testImplementation("com.github.GTNewHorizons:ThaumicEnergistics:1.7.64-GTNH:dev") { transitive = false }
+
     testImplementation(
         "com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-1080-GTNH:dev"
     ) {

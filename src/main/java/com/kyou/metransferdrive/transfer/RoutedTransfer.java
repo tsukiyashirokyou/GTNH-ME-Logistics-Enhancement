@@ -44,13 +44,26 @@ public final class RoutedTransfer<K, G> {
             this.isolated = true;
         } else if (reception.simulated > 0 && reception.offered < 0) {
             // No energy or no actual source contents: a lower priority destination cannot fix this.
-            this.next = this.targets.size();
+            if (!energy.isDeferred()) {
+                this.next = this.targets.size();
+            }
         } else if (reception.simulated == 0 || reception.received < reception.offered
             || reception.offered == reception.simulated && reception.simulated < limit) {
                 // Known rejection/partial reception, fully returned to source: advance exactly once.
                 this.next++;
             }
         return delivered;
+    }
+
+    /** External source changes may reduce this snapshot's goal, but never authorize newer contents. */
+    public void limitRemaining(final long available) {
+        if (available < 0) {
+            throw new IllegalArgumentException("Negative source availability");
+        }
+        if (this.isolated) {
+            throw new IllegalStateException("Cannot change an isolated routing cursor");
+        }
+        this.remaining = Math.min(this.remaining, available);
     }
 
     public boolean isFinished() {

@@ -188,8 +188,8 @@ public class DriveGuiLogicTest {
     }
 
     @Test
-    public void malformedAndOutOfRangePeriodsDoNotMutate() {
-        for (String value : new String[] { "0", "-1", "86401", "1.5", "1e3", "", " 60", "2147483648", "1\n", "+2" }) {
+    public void malformedPeriodsDoNotMutate() {
+        for (String value : new String[] { "1.5", "1e3", "", " 60", "1\n", "+2" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", value));
         }
         assertEquals(60, this.context.period);
@@ -215,8 +215,7 @@ public class DriveGuiLogicTest {
 
     @Test
     public void aliasesUseTheRegistryPrintableLengthValidation() {
-        for (String value : new String[] { "", " ", "bad\nname",
-            String.join("", java.util.Collections.nCopies(65, "x")) }) {
+        for (String value : new String[] { "", " ", "bad\nname" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, value, "0"));
         }
         assertEquals("ok", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, " local name ", "-3"));
@@ -232,14 +231,14 @@ public class DriveGuiLogicTest {
     }
 
     @Test
-    public void prioritiesAcceptFullSignedIntegerRangeAndRejectOverflow() {
+    public void prioritiesAcceptFullSignedIntegerRangeAndClampOverflow() {
         assertEquals("ok", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "A", "-2147483648"));
         assertEquals(
             Integer.MIN_VALUE,
             this.context.target(this.first)
                 .getPriority());
         assertEquals("ok", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "A", "2147483647"));
-        assertEquals("invalid", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "A", "2147483648"));
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "A", "2147483648"));
         assertEquals(
             Integer.MAX_VALUE,
             this.context.target(this.first)
@@ -252,6 +251,81 @@ public class DriveGuiLogicTest {
         assertEquals("ok", DriveGuiLogic.apply(request, this.context));
         assertEquals("stale", DriveGuiLogic.apply(request, this.context));
         assertEquals(1, this.context.mutations);
+    }
+
+    @Test
+    public void selectedTargetsToggleIndependentlyByStableIdAndEmptySelectionStaysOff() {
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.SPECIFIC_MODE, 2, null, "", ""));
+        assertTrue(
+            this.context.registry.getRoute(2)
+                .getTargetIds()
+                .isEmpty());
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.TOGGLE_TARGET, 2, this.first, "", ""));
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.TOGGLE_TARGET, 2, this.second, "", ""));
+        assertEquals(
+            2,
+            this.context.registry.getRoute(2)
+                .getTargetIds()
+                .size());
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.TOGGLE_TARGET, 2, this.first, "", ""));
+        assertEquals(
+            java.util.Collections.singleton(this.second),
+            this.context.registry.getRoute(2)
+                .getTargetIds());
+        assertTrue(
+            this.context.registry.getRoute(1)
+                .getTargetIds()
+                .isEmpty());
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.TOGGLE_TARGET, 2, this.second, "", ""));
+        assertEquals(
+            TargetRegistry.Mode.SPECIFIC,
+            this.context.registry.getRoute(2)
+                .getMode());
+        assertTrue(
+            this.context.registry.getRoute(2)
+                .getTargetIds()
+                .isEmpty());
+    }
+
+    @Test
+    public void staleToggleCannotUndoANewerSelectionAndDeletedTargetsAreRejected() {
+        final DriveGuiAction request = this.action(DriveGuiAction.Kind.TOGGLE_TARGET, 1, this.first, "", "");
+        assertEquals("ok", DriveGuiLogic.apply(request, this.context));
+        assertEquals("stale", DriveGuiLogic.apply(request, this.context));
+        assertTrue(
+            this.context.registry.getRoute(1)
+                .getTargetIds()
+                .contains(this.first));
+        this.context.registry.remove(this.first);
+        assertEquals("stale", this.apply(DriveGuiAction.Kind.TOGGLE_TARGET, 1, this.first, "", ""));
+    }
+
+    @Test
+    public void serverNormalizesOrdinaryInputWithoutRelyingOnTheClient() {
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", "9223372036854775808"));
+        assertEquals(86400, this.context.period);
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", "-9223372036854775809"));
+        assertEquals(1, this.context.period);
+        final String alias = String.join("", java.util.Collections.nCopies(80, "x"));
+        assertEquals(
+            "ok",
+            this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, alias, "999999999999999999999999"));
+        assertEquals(
+            64,
+            this.context.target(this.first)
+                .getDisplayName()
+                .length());
+        assertEquals(
+            Integer.MAX_VALUE,
+            this.context.target(this.first)
+                .getPriority());
+        assertEquals(
+            "ok",
+            this.apply(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "A", "-99999999999999999999999"));
+        assertEquals(
+            Integer.MIN_VALUE,
+            this.context.target(this.first)
+                .getPriority());
     }
 
     private static final class Context implements DriveGuiLogic.Context {
@@ -294,6 +368,11 @@ public class DriveGuiLogicTest {
         @Override
         public boolean hasTarget(UUID id) {
             return id != null && this.target(id) != null;
+        }
+
+        @Override
+        public TargetRegistry.Route getRoute(int group) {
+            return this.registry.getRoute(group);
         }
 
         @Override

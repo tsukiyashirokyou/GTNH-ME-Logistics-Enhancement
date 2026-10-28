@@ -30,6 +30,12 @@ public final class TransferTransaction<K> {
     public interface Energy {
 
         long reserve(long amount);
+
+        default void settle(long delivered, boolean certain) {}
+
+        default boolean isDeferred() {
+            return false;
+        }
     }
 
     private final Runnable checkpoint;
@@ -70,20 +76,27 @@ public final class TransferTransaction<K> {
             this.reportedAmount = source.extract(authorized);
             this.held = checked(this.reportedAmount, authorized);
             this.enter(Phase.HELD);
+            if (this.held > 0) {
+                this.enter(Phase.INSERTING);
+                this.reportedAmount = destination.insert(this.held);
+                this.delivered = checked(this.reportedAmount, this.held);
+                this.held -= this.delivered;
+                this.enter(Phase.HELD);
+                this.returnRemainder(source);
+            }
+            energy.settle(this.delivered, true);
             if (this.held == 0) {
                 this.clear();
-                return 0;
             }
-            this.enter(Phase.INSERTING);
-            this.reportedAmount = destination.insert(this.held);
-            this.delivered = checked(this.reportedAmount, this.held);
-            this.held -= this.delivered;
-            this.enter(Phase.HELD);
-            this.returnRemainder(source);
         } catch (final RuntimeException failure) {
             this.recordFailure(failure);
             this.uncertainOperation = this.phase;
             this.phase = Phase.UNCERTAIN;
+            try {
+                energy.settle(this.delivered, false);
+            } catch (final RuntimeException settlementFailure) {
+                failure.addSuppressed(settlementFailure);
+            }
             this.checkpoint.run();
         }
         return this.delivered;
@@ -96,6 +109,9 @@ public final class TransferTransaction<K> {
         }
         try {
             this.returnRemainder(source);
+            if (this.held == 0) {
+                this.clear();
+            }
         } catch (final RuntimeException failure) {
             this.recordFailure(failure);
             this.uncertainOperation = this.phase;
@@ -112,8 +128,6 @@ public final class TransferTransaction<K> {
         }
         if (this.held > 0) {
             this.enter(Phase.RECOVERABLE);
-        } else {
-            this.clear();
         }
     }
 

@@ -229,6 +229,67 @@ public class RoutingCycleTest {
         assertFalse(cycle.isTopologyValid());
     }
 
+    @Test
+    public void specifiedSubsetUsesDevicePriorityAndStableRegistrationOrderRatherThanSelectionOrder() {
+        final TransferTarget first = this.add(new Object(), 10);
+        final TransferTarget second = this.add(new Object(), 10);
+        this.add(new Object(), 100);
+        final TransferTarget high = this.add(new Object(), 20);
+        this.registry.setRoute(
+            0,
+            TargetRegistry.Route.specific(java.util.Arrays.asList(second.getId(), high.getId(), first.getId())));
+        final java.util.List<RoutingCycle.Target<Object>> targets = this.prepared()
+            .targetsForGroup(0);
+        assertEquals(3, targets.size());
+        assertEquals(
+            high.getId(),
+            targets.get(0)
+                .getBinding()
+                .getId());
+        assertEquals(
+            first.getId(),
+            targets.get(1)
+                .getBinding()
+                .getId());
+        assertEquals(
+            second.getId(),
+            targets.get(2)
+                .getBinding()
+                .getId());
+    }
+
+    @Test
+    public void multiSelectionReevaluatesMergedAndSplitGridsWithoutErasingBindings() {
+        final Object merged = new Object();
+        final TransferTarget first = this.add(merged, 10);
+        final TransferTarget second = this.add(merged, 0);
+        this.registry
+            .setRoute(0, TargetRegistry.Route.specific(java.util.Arrays.asList(first.getId(), second.getId())));
+        final RoutingCycle<Object> before = this.prepared();
+        assertEquals(
+            1,
+            before.targetsForGroup(0)
+                .size());
+        this.grids.get(second.getId())
+            .set(new Object());
+        assertFalse(before.isTopologyValid());
+        assertEquals(
+            2,
+            this.prepared()
+                .targetsForGroup(0)
+                .size());
+        assertEquals(
+            2,
+            this.registry.getRoute(0)
+                .getTargetIds()
+                .size());
+        this.registry.setRoute(7, TargetRegistry.Route.specific(java.util.Collections.emptySet()));
+        assertTrue(
+            this.prepared()
+                .targetsForGroup(7)
+                .isEmpty());
+    }
+
     private TransferTarget add(final Object grid, final int priority) {
         final TransferTarget binding = new TransferTarget(
             UUID.randomUUID(),
