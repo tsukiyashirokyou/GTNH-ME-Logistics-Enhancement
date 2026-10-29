@@ -298,6 +298,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     private NBTTagCompound configuration() {
         final NBTTagCompound config = new NBTTagCompound();
         config.setInteger("period", this.tile.getTransferPeriodSeconds());
+        config.setInteger("storagePriority", this.tile.getPriority());
         config.setString(
             "access",
             this.tile.getAccessMode()
@@ -424,6 +425,11 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     @Override
     public void setAccess(final AccessRestriction access) {
         this.tile.setAccessMode(access);
+    }
+
+    @Override
+    public void setStoragePriority(final int priority) {
+        this.tile.setPriority(priority);
     }
 
     @Override

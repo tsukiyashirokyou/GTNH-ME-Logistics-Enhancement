@@ -328,6 +328,55 @@ public class DriveGuiLogicTest {
                 .getPriority());
     }
 
+    @Test
+    public void storagePriorityAcceptsSignedIntegersAndClampsBeyondLongWithoutChangingTargetPriority() {
+        this.context.registry.updateMetadata(this.first, "Target", 123);
+        this.context.registry.setRoute(3, TargetRegistry.Route.specific(this.first));
+        final String[] inputs = { "0", "-1", "-2147483648", "2147483647", "999999999999999999999999",
+            "-999999999999999999999999" };
+        final int[] expected = { 0, -1, Integer.MIN_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE };
+        for (int index = 0; index < inputs.length; index++) {
+            assertEquals("ok", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 0, null, "", inputs[index]));
+            assertEquals(expected[index], this.context.storagePriority);
+            assertEquals(
+                123,
+                this.context.target(this.first)
+                    .getPriority());
+            assertEquals(
+                this.first,
+                this.context.registry.getRoute(3)
+                    .getTargetId());
+            assertEquals(AccessRestriction.READ_WRITE, this.context.access);
+            assertEquals(60, this.context.period);
+        }
+        assertEquals(inputs.length, this.context.mutations);
+    }
+
+    @Test
+    public void malformedStoragePriorityCannotMutateAnyConfiguration() {
+        for (final String input : new String[] { null, "", "-", "1.5", "+2", " 7", "1e3", "1\n",
+            "999999999999999999999999999999999" }) {
+            assertEquals("invalid", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 0, null, "", input));
+        }
+        assertEquals(0, this.context.storagePriority);
+        assertEquals(0, this.context.mutations);
+    }
+
+    @Test
+    public void storagePriorityStillRequiresCurrentSessionRevisionPermissionAndUnlockedState() {
+        final DriveGuiAction original = this.action(DriveGuiAction.Kind.STORAGE_PRIORITY, 0, null, "", "-42");
+        this.context.canUse = false;
+        assertEquals("denied", DriveGuiLogic.apply(original, this.context));
+        this.context.canUse = true;
+        this.context.locked = true;
+        assertEquals("locked", DriveGuiLogic.apply(original, this.context));
+        this.context.locked = false;
+        assertEquals("ok", DriveGuiLogic.apply(original, this.context));
+        assertEquals("stale", DriveGuiLogic.apply(original, this.context));
+        assertEquals(-42, this.context.storagePriority);
+        assertEquals(1, this.context.mutations);
+    }
+
     private static final class Context implements DriveGuiLogic.Context {
 
         final UUID session = UUID.randomUUID();
@@ -337,6 +386,7 @@ public class DriveGuiLogicTest {
         boolean locked;
         int page;
         int period = 60;
+        int storagePriority;
         int mutations;
         AccessRestriction access = AccessRestriction.READ_WRITE;
 
@@ -390,6 +440,12 @@ public class DriveGuiLogicTest {
         @Override
         public void setAccess(AccessRestriction access) {
             this.access = access;
+            this.changed();
+        }
+
+        @Override
+        public void setStoragePriority(int priority) {
+            this.storagePriority = priority;
             this.changed();
         }
 

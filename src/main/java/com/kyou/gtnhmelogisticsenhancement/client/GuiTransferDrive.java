@@ -28,10 +28,12 @@ public final class GuiTransferDrive extends GuiContainer {
     private GuiTextField period;
     private GuiTextField name;
     private GuiTextField priority;
+    private GuiTextField storagePriority;
     private String selectedId = "";
     private int targetPage;
     private long editorRevision;
     private long periodRevision;
+    private long storagePriorityRevision;
     private String localError = "";
     private boolean metadataSubmitted;
     private long clickSequence;
@@ -64,6 +66,7 @@ public final class GuiTransferDrive extends GuiContainer {
         this.button(16, 284, 91, 28, ">");
         this.button(17, 257, 167, 55, tr("save"));
         this.button(18, 183, 187, 129, tr("delete"));
+        this.button(19, 137, 64, 29, tr("set"));
         for (int row = 0; row < 4; row++) {
             this.button(20 + row, 203, 23 + row * 17, 109, "");
             this.button(30 + row, 183, 23 + row * 17, 18, "");
@@ -71,11 +74,18 @@ public final class GuiTransferDrive extends GuiContainer {
         this.period = this.field(9, 147, 65, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.name = this.field(183, 135, 129, ConfigurationInput.MAX_TEXT_BYTES);
         this.priority = this.field(183, 168, 69, ConfigurationInput.MAX_NUMBER_LENGTH);
+        this.storagePriority = this.field(60, 65, 76, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.period.setText(
             Integer.toString(
                 this.state()
                     .getInteger("period")));
         this.periodRevision = this.state()
+            .getLong("revision");
+        this.storagePriority.setText(
+            Integer.toString(
+                this.state()
+                    .getInteger("storagePriority")));
+        this.storagePriorityRevision = this.state()
             .getLong("revision");
         this.select(this.selectedId);
     }
@@ -144,6 +154,7 @@ public final class GuiTransferDrive extends GuiContainer {
         this.period.updateCursorCounter();
         this.name.updateCursorCounter();
         this.priority.updateCursorCounter();
+        this.storagePriority.updateCursorCounter();
         if (this.metadataSubmitted && this.state()
             .getLong("revision") != this.editorRevision) {
             this.metadataSubmitted = false;
@@ -155,6 +166,14 @@ public final class GuiTransferDrive extends GuiContainer {
                     this.state()
                         .getInteger("period")));
             this.periodRevision = this.state()
+                .getLong("revision");
+        }
+        if (!this.storagePriority.isFocused()) {
+            this.storagePriority.setText(
+                Integer.toString(
+                    this.state()
+                        .getInteger("storagePriority")));
+            this.storagePriorityRevision = this.state()
                 .getLong("revision");
         }
         if (!this.selectedId.isEmpty() && this.selected() == null) {
@@ -302,6 +321,14 @@ public final class GuiTransferDrive extends GuiContainer {
                         this.state()
                             .getLong("revision"));
                     break;
+                case 19:
+                    this.request(
+                        DriveGuiAction.Kind.STORAGE_PRIORITY,
+                        group,
+                        "",
+                        this.storagePriority.getText(),
+                        this.storagePriorityRevision);
+                    break;
                 default:
                     break;
             }
@@ -325,7 +352,7 @@ public final class GuiTransferDrive extends GuiContainer {
                 : text;
             final String normalizedNumber = kind == DriveGuiAction.Kind.PERIOD
                 ? Integer.toString(ConfigurationInput.clampInteger(number, 1, 86400))
-                : kind == DriveGuiAction.Kind.UPDATE_TARGET
+                : kind == DriveGuiAction.Kind.UPDATE_TARGET || kind == DriveGuiAction.Kind.STORAGE_PRIORITY
                     ? Integer.toString(ConfigurationInput.clampInteger(number, Integer.MIN_VALUE, Integer.MAX_VALUE))
                     : number;
             DriveGuiNetwork.request(
@@ -393,7 +420,7 @@ public final class GuiTransferDrive extends GuiContainer {
             183,
             7,
             129);
-        this.line(tr("transfer_types"), 9, 68, 162);
+        this.line(tr("storage_priority_short"), 9, 68, 47);
         final int group = this.state()
             .getInteger("page");
         this.line(
@@ -489,6 +516,16 @@ public final class GuiTransferDrive extends GuiContainer {
         this.period.drawTextBox();
         this.name.drawTextBox();
         this.priority.drawTextBox();
+        this.storagePriority.drawTextBox();
+        if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 57
+            && mouseY >= this.guiTop + 64
+            && mouseY < this.guiTop + 81) {
+            final java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add(tr("storage_priority"));
+            lines.add(tr("storage_priority_hint"));
+            lines.add(tr("transfer_types"));
+            this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
+        }
         if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 172
             && mouseY >= this.guiTop + 81
             && mouseY < this.guiTop + 104) {
@@ -567,13 +604,15 @@ public final class GuiTransferDrive extends GuiContainer {
         this.period.mouseClicked(mouseX, mouseY, button);
         this.name.mouseClicked(mouseX, mouseY, button);
         this.priority.mouseClicked(mouseX, mouseY, button);
+        this.storagePriority.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
     protected void keyTyped(final char character, final int key) {
         if (key != Keyboard.KEY_ESCAPE
             && (this.period.textboxKeyTyped(character, key) || this.name.textboxKeyTyped(character, key)
-                || this.priority.textboxKeyTyped(character, key))) {
+                || this.priority.textboxKeyTyped(character, key)
+                || this.storagePriority.textboxKeyTyped(character, key))) {
             return;
         }
         super.keyTyped(character, key);

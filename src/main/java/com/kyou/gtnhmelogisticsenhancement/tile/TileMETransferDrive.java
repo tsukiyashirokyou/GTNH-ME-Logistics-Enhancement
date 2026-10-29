@@ -47,6 +47,7 @@ import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IAEStackType;
 import appeng.api.util.AECableType;
 import appeng.api.util.DimensionalCoord;
+import appeng.helpers.IPriorityHost;
 import appeng.me.GridAccessException;
 import appeng.me.cache.GridStorageCache;
 import appeng.me.storage.MEInventoryHandler;
@@ -58,7 +59,7 @@ import appeng.tile.inventory.InvOperation;
 import appeng.util.Platform;
 
 /** A single source-grid, 64-cell drive with bounded transfers to independent target grids. */
-public class TileMETransferDrive extends AENetworkInvTile implements ICellContainer {
+public class TileMETransferDrive extends AENetworkInvTile implements ICellContainer, IPriorityHost {
 
     private static final int[] ACCESSIBLE_SLOTS = new int[DriveSlotLayout.TOTAL_SLOTS];
 
@@ -77,6 +78,10 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     private AccessRestriction accessMode = AccessRestriction.READ_WRITE;
     private AccessRestriction pendingAccessMode;
     private boolean changingAccess;
+    private int storagePriority;
+    private Integer pendingStoragePriority;
+    private boolean changingStoragePriority;
+    private long storagePriorityRevision;
     private boolean handlersCached;
     private boolean buildingHandlers;
     private boolean ready;
@@ -131,6 +136,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     public void tickTransfers() {
         if (this.ready && this.worldObj != null && !this.worldObj.isRemote && !this.isInvalid()) {
             this.applyPendingAccessMode();
+            this.applyPendingStoragePriority();
             this.transfer.tick();
         }
     }
@@ -176,7 +182,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @Override
     public boolean isItemValidForSlot(final int slot, final ItemStack stack) {
-        return !this.changingAccess && !this.hasTransferRecovery()
+        return !this.changingAccess && !this.changingStoragePriority
+            && !this.hasTransferRecovery()
             && slot >= 0
             && slot < DriveSlotLayout.TOTAL_SLOTS
             && stack != null
@@ -250,6 +257,19 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     }
 
     @TileEvent(TileEventType.WORLD_NBT_READ)
+    public void readStoragePriority(final NBTTagCompound data) {
+        this.pendingStoragePriority = null;
+        this.storagePriority = data.hasKey("storagePriority", 3) ? data.getInteger("storagePriority") : 0;
+    }
+
+    @TileEvent(TileEventType.WORLD_NBT_WRITE)
+    public void writeStoragePriority(final NBTTagCompound data) {
+        data.setInteger(
+            "storagePriority",
+            this.pendingStoragePriority == null ? this.storagePriority : this.pendingStoragePriority);
+    }
+
+    @TileEvent(TileEventType.WORLD_NBT_READ)
     public void readTransferState(final NBTTagCompound data) {
         this.transfer.readFromNBT(data);
     }
@@ -275,6 +295,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     public boolean isTransferConfigurationLocked() {
         return this.changingAccess || this.pendingAccessMode != null
+            || this.changingStoragePriority
+            || this.pendingStoragePriority != null
             || this.transfer.isConfigurationLocked()
             || this.quarantinedCells != null;
     }
@@ -354,7 +376,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     }
 
     public long getTransferConfigurationRevision() {
-        return this.transfer.getConfigurationRevision();
+        return this.transfer.getConfigurationRevision() + this.storagePriorityRevision;
     }
 
     @Override
@@ -392,7 +414,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @Override
     public boolean canExtractItem(final int slot, final ItemStack stack, final int side) {
-        return !this.changingAccess && !this.hasTransferRecovery();
+        return !this.changingAccess && !this.changingStoragePriority && !this.hasTransferRecovery();
     }
 
     @Override
@@ -425,6 +447,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         try {
             this.readFromNBT_AEBaseInvTile(state);
             this.readAccessMode(state);
+            this.readStoragePriority(state);
             this.readTransferState(state);
         } finally {
             this.ready = wasReady;
@@ -457,7 +480,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         if (this.worldObj != null && this.worldObj.isRemote) {
             return;
         }
-        if (this.changingAccess) {
+        if (this.changingAccess || this.changingStoragePriority) {
             this.pendingAccessMode = mode;
             this.saveChanges(null);
         } else {
@@ -474,7 +497,8 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
     }
 
     void applyPendingAccessMode() {
-        if (!this.changingAccess && this.pendingAccessMode != null
+        if (!this.changingAccess && !this.changingStoragePriority
+            && this.pendingAccessMode != null
             && !this.transfer.isConfigurationLocked()
             && this.quarantinedCells == null) {
             final AccessRestriction mode = this.pendingAccessMode;
@@ -575,7 +599,67 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     @Override
     public int getPriority() {
-        return 0;
+        return this.storagePriority;
+    }
+
+    /** Source-grid storage order only. Requests from synchronous AE callbacks commit outside their call stack. */
+    @Override
+    public void setPriority(final int priority) {
+        this.requireServer();
+        if (this.changingAccess || this.changingStoragePriority) {
+            this.pendingStoragePriority = priority;
+            this.saveChanges(null);
+            return;
+        }
+        if (this.transfer.isConfigurationLocked() || this.quarantinedCells != null || this.buildingHandlers) {
+            throw new IllegalStateException("Cannot change storage priority during transfer, recovery or construction");
+        }
+        if (this.ready) {
+            this.pendingStoragePriority = priority;
+            this.saveChanges(null);
+        } else {
+            this.applyStoragePriority(priority);
+        }
+    }
+
+    void applyPendingStoragePriority() {
+        if (!this.changingAccess && !this.changingStoragePriority
+            && this.pendingStoragePriority != null
+            && !this.transfer.isConfigurationLocked()
+            && this.quarantinedCells == null) {
+            final int priority = this.pendingStoragePriority;
+            this.pendingStoragePriority = null;
+            try {
+                this.applyStoragePriority(priority);
+            } catch (final RuntimeException failure) {
+                // Do not replay an event whose synchronous listeners may already have observed the new order.
+                GTNHMELogisticsEnhancementMod.LOG.warn("ME Transfer Drive storage priority update failed", failure);
+            }
+        }
+    }
+
+    private void applyStoragePriority(final int priority) {
+        if (priority == this.storagePriority) {
+            return;
+        }
+        this.changingStoragePriority = true;
+        try {
+            this.storagePriority = priority;
+            for (final MEInventoryHandler<?> handler : this.handlersBySlot) {
+                if (handler != null) {
+                    handler.setPriority(priority);
+                }
+            }
+            // This is a GUI configuration revision, not a routing/topology change or an inventory delta.
+            this.storagePriorityRevision++;
+            this.saveChanges(null);
+            if (this.ready) {
+                this.postCellArrayUpdate();
+            }
+            this.markDirty();
+        } finally {
+            this.changingStoragePriority = false;
+        }
     }
 
     @Override
@@ -625,6 +709,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
                         nativeHandler.getStackType(),
                         this);
                     handler.setBaseAccess(this.accessMode);
+                    handler.setPriority(this.storagePriority);
                     this.handlersBySlot[slot] = handler;
                     this.cellsByType.get(type)
                         .add(handler);
@@ -678,6 +763,9 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
             if (changingAccess) {
                 throw new IllegalStateException("Cannot replace cells while publishing access visibility");
             }
+            if (changingStoragePriority) {
+                throw new IllegalStateException("Cannot replace cells while updating storage priority");
+            }
             if (!loadingCells && hasTransferRecovery()) {
                 throw new IllegalStateException("Cell inventory is locked by a pending transfer transaction");
             }
@@ -690,6 +778,7 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
         @Override
         public ItemStack decrStackSize(final int slot, final int amount) {
             return buildingHandlers || changingAccess
+                || changingStoragePriority
                 || hasTransferRecovery()
                 || amount <= 0
                 || slot < 0

@@ -2,6 +2,7 @@ package com.kyou.gtnhmelogisticsenhancement.gui;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.UUID;
@@ -162,8 +163,39 @@ public class DriveGuiNetworkTest {
     }
 
     @Test
+    public void storagePriorityRequestsUseTheExistingEnvelopeAndPreserveSignedLimits() {
+        for (final String number : new String[] { "-2147483648", "2147483647", "-9999999999999999999999999999999" }) {
+            final DriveGuiNetwork.ActionMessage request = new DriveGuiNetwork.ActionMessage();
+            request.window = 4;
+            request.action = new DriveGuiAction(
+                DriveGuiAction.Kind.STORAGE_PRIORITY,
+                UUID.randomUUID(),
+                77,
+                0,
+                null,
+                "",
+                number);
+            final ByteBuf buffer = Unpooled.buffer();
+            try {
+                request.toBytes(buffer);
+                final DriveGuiNetwork.ActionMessage decoded = new DriveGuiNetwork.ActionMessage();
+                decoded.fromBytes(buffer);
+                assertEquals(4, decoded.window);
+                assertEquals(DriveGuiAction.Kind.STORAGE_PRIORITY, decoded.action.kind);
+                assertEquals(request.action.session, decoded.action.session);
+                assertEquals(77, decoded.action.revision);
+                assertNull(decoded.action.target);
+                assertEquals(number, decoded.action.number);
+            } finally {
+                buffer.release();
+            }
+        }
+    }
+
+    @Test
     public void maximumSelectionsAndUnicodeAliasesFitTheNativeSnapshotBudget() {
         final net.minecraft.nbt.NBTTagCompound state = new net.minecraft.nbt.NBTTagCompound();
+        state.setInteger("storagePriority", Integer.MIN_VALUE);
         final net.minecraft.nbt.NBTTagList targets = new net.minecraft.nbt.NBTTagList();
         final net.minecraft.nbt.NBTTagList ids = new net.minecraft.nbt.NBTTagList();
         final java.util.Random random = new java.util.Random(54321);

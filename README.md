@@ -44,6 +44,8 @@ GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩�
 
 访问模式控制源网络对存储元件的访问，不影响设备内部按规则执行转运。
 
+GUI 可设置整台设备的**存储优先级（Storage Priority）**，默认 0，范围为 -2147483648～2147483647，64 个槽统一使用。该值参与所在源 ME 网络的原生存取排序，遵循 AE2 的黏性、过滤及权限规则；与目标网络的转运优先级分别设置。
+
 ### 2. 定时跨网络转运
 
 设备可以按照指定周期，将自身存储元件中的内容自动输出至绑定的目标 ME 网络。
@@ -141,7 +143,7 @@ GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩�
 .\gradlew.bat --gradle-user-home .gradle-user-home build
 ```
 
-正式游戏 JAR 位于 `build/libs/gtnhmelogisticsenhancement-<version>.jar`。项目保留既定 Minecraft、Forge、AE2、Gradle 和 Java 工具链版本；具体开发状态及尚未完成的游戏验收见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)。
+正式游戏 JAR 位于 `build/libs/gtnhmelogisticsenhancement-<version>.jar`。项目保留既定 Minecraft、Forge、AE2、Gradle 和 Java 工具链版本。开发状态、审计及设计记录作为本地内部资料维护；真实游戏验收尚未完成。
 
 版本号沿用现有 Git 版本生成逻辑；本地开发构建可能包含分支、提交和 `dirty` 后缀，以 `build/libs` 中的实际文件名及 JAR 元数据为准。
 

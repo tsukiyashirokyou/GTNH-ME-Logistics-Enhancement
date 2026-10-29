@@ -35,6 +35,8 @@ public final class DriveGuiLogic {
 
         void setAccess(AccessRestriction access);
 
+        void setStoragePriority(int priority);
+
         void updateTarget(UUID id, String name, int priority);
 
         void deleteTarget(UUID id);
@@ -118,6 +120,10 @@ public final class DriveGuiLogic {
                     context.updateTarget(
                         action.target,
                         ConfigurationInput.alias(action.text),
+                        ConfigurationInput.clampInteger(action.number, Integer.MIN_VALUE, Integer.MAX_VALUE));
+                    break;
+                case STORAGE_PRIORITY:
+                    context.setStoragePriority(
                         ConfigurationInput.clampInteger(action.number, Integer.MIN_VALUE, Integer.MAX_VALUE));
                     break;
                 case DELETE_TARGET:
