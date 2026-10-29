@@ -20,12 +20,14 @@ public abstract class PartitionOutputTransaction<K, T>
     @Override
     public final void setRecipeCheck(final boolean recipeCheck) {
         this.requireActive();
+        this.transaction.setEmergencyAllowed(!recipeCheck && this.protectOutput);
         this.recipeCheck = recipeCheck;
     }
 
     @Override
     public final void setProtectOutput(final boolean protectOutput) {
         this.requireActive();
+        this.transaction.setEmergencyAllowed(!this.recipeCheck && protectOutput);
         this.protectOutput = protectOutput;
     }
 

@@ -115,12 +115,13 @@ public class PartitionStoreTest {
         final PartitionStore<String>.Transaction stale = store.transaction();
         stale.offer("A", 50);
         store.remove("A", 1);
-        assertThrows(PartitionStore.CommitConflictException.class, stale::commit);
+        stale.commit();
+        assertEquals(149, store.quantity("A"));
         final PartitionStore<String>.Transaction staleConfig = store.transaction();
         staleConfig.offer("B", 50);
         store.configure(1, 100);
         assertThrows(PartitionStore.CommitConflictException.class, staleConfig::commit);
-        assertEquals(99, store.quantity("A"));
+        assertEquals(149, store.quantity("A"));
     }
 
     @Test

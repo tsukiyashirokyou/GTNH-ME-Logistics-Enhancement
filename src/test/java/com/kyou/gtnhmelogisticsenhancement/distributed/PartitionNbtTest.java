@@ -18,7 +18,7 @@ import org.junit.Test;
 /** Real Minecraft NBT; string identities isolate registry bootstrap from the pure recovery rules. */
 public class PartitionNbtTest {
 
-    private static final PartitionNbt.IdentityCodec<String> CODEC = new PartitionNbt.IdentityCodec<String>() {
+    static final PartitionNbt.IdentityCodec<String> CODEC = new PartitionNbt.IdentityCodec<String>() {
 
         @Override
         public String type() {

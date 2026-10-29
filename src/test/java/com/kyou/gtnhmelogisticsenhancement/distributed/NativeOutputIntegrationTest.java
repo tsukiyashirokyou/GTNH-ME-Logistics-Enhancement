@@ -40,7 +40,17 @@ public class NativeOutputIntegrationTest {
                 { "nativeHelpersRespectOneAndSixteenPartitionsAndNeverCreateTheNextIdentity" },
                 { "sharedSameIdentityAndFluidPrechecksCannotReserveFutureOutput" },
                 { "failedGtCommitKeepsEvidenceAndCompleteNormalizesQuantityBearingIds" },
-                { "invalidNativeIdentityNbtCannotTurnIntoDefaultRegistryStock" } });
+                { "invalidNativeIdentityNbtCannotTurnIntoDefaultRegistryStock" },
+                { "emergencyActualReceiptNeverAuthorizesRecipeChecksOrUnprotectedDirectCalls" },
+                { "nativeProtectedReceiptHandlesSixtyFourKindsAndCountsAllOfThemInPrechecks" },
+                { "nativeEmergencyFluidChunksAndDuplicatesSurviveLongNbtRoundTrip" },
+                { "nativeRecipeToCompletionSurvivesCapacityAndFilterChangesWithoutTokenOrMixin" },
+                { "nativeTwoHelpersCanStageBeforeEitherCommitAndRebaseCompleteDeltas" },
+                { "protectedActualDrainsAndPromotesEmergencyTypesUsingTheCommonOutputView" },
+                { "actualPhaseFlagsCannotBeChangedAfterAnyInventoryDecision" },
+                { "actualHelperOverflowPreservesStockAndNonMaterializedFailureEvidence" },
+                { "duplicateOutputEndpointReferenceDoesNotReplayCommittedStock" },
+                { "mixedNonAwareOutputKeepsItsNativeInterfaceContractAndCapacity" } });
     }
 
     @BeforeClass
