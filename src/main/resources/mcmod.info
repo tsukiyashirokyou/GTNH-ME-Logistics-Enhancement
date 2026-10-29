@@ -3,7 +3,7 @@
 	"modList": [{
 		"modid": "${modId}",
 		"name": "${modName}",
-		"description": "ME Transfer Drive addon for Minecraft 1.7.10 and GT New Horizons.",
+		"description": "GTNH ME Logistics Enhancement: AE2 storage and cross-network logistics for Minecraft 1.7.10 and GT New Horizons.",
 		"version": "${modVersion}",
 		"mcversion": "${minecraftVersion}",
 		"url": "",

@@ -1,8 +1,10 @@
 # Third-party asset notices
 
+Distributed with **GTNH ME Logistics Enhancement** (`gtnhmelogisticsenhancement`).
+
 ## ME Network Binding Tool icon
 
-- Distributed asset: `assets/metransferdrive/textures/items/me_network_binding_tool.png`.
+- Distributed asset: `assets/gtnhmelogisticsenhancement/textures/items/me_network_binding_tool.png`.
 - Original: `assets/appliedenergistics2/textures/items/ToolWirelessKit.png`, from GTNH AE2 `rv3-beta-1080-GTNH`.
 - Source revision: `e69c59ccd7933fd9e3de899e34a70a1f30414002`.
 - Source: <https://github.com/GTNewHorizons/Applied-Energistics-2-Unofficial/blob/e69c59ccd7933fd9e3de899e34a70a1f30414002/src/main/resources/assets/appliedenergistics2/textures/items/ToolWirelessKit.png>.

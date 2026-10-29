@@ -1,4 +1,4 @@
-# GTNH ME Transfer Drive
+# GTNH ME Logistics Enhancement
 
 **专为 GregTech New Horizons（GTNH）设计的 64 槽 AE2 存储与跨网络转运设备。**
 
@@ -6,11 +6,23 @@ A 64-slot AE2 storage drive with scheduled cross-network transfers, multiple des
 
 ## 项目简介
 
-GTNH ME Transfer Drive 是一个面向 GregTech New Horizons 的 AE2 扩展 Mod，主要用于解决多个独立 ME 网络之间的批量物资转运问题。
+GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩展 Mod，主要用于解决多个独立 ME 网络之间的批量物资转运问题。
 
 核心设备为**存储转运驱动器（ME Transfer Drive）**，在保留原生 ME 驱动器存储功能的基础上，将存储槽扩展至 64 个，并支持按照设定周期，将设备内存储元件中的物品、流体及源质自动转运至其他 ME 网络。
 
 设备支持绑定多个目标 ME 接口、配置转运优先级及存储元件分组，并提供库存访问权限控制、能源保护和跨网络循环检测机制。
+
+## 项目标识
+
+| 项目 | 标识 |
+| --- | --- |
+| Mod 显示名称 | GTNH ME Logistics Enhancement |
+| Mod ID / 资源命名空间 | `gtnhmelogisticsenhancement` |
+| Java 根包 | `com.kyou.gtnhmelogisticsenhancement` |
+| 正式构建产物 | `gtnhmelogisticsenhancement-<version>.jar` |
+| GitHub 仓库预定名称 | `GTNH-ME-Logistics-Enhancement` |
+
+仓库名称为发布规划；本次命名重构不修改 Git 远程地址、不创建 Tag，也不发布 Release。设备名称仍为 **ME Transfer Drive**，专用工具仍为 **ME Network Binding Tool**。
 
 ## 核心功能
 
@@ -110,7 +122,7 @@ GTNH ME Transfer Drive 是一个面向 GregTech New Horizons 的 AE2 扩展 Mod�
 
 ## 安装方法
 
-1. 下载 Releases 页面中的正式 Mod JAR 文件。
+1. 从正式发布渠道获取 `gtnhmelogisticsenhancement-<version>.jar`，例如版本 `0.1.0-rc.1` 对应 `gtnhmelogisticsenhancement-0.1.0-rc.1.jar`。
 2. 将 JAR 放入 GTNH 实例的 `mods` 文件夹。
 3. 启动游戏，确认 Mod 正确加载。
 4. 在多人服务器中，确保客户端和服务器安装兼容的 Mod 版本。
@@ -118,6 +130,20 @@ GTNH ME Transfer Drive 是一个面向 GregTech New Horizons 的 AE2 扩展 Mod�
 请使用正式发布 JAR，不要将 `-dev.jar` 或 `-sources.jar` 作为普通游戏 Mod 安装。
 
 首次安装建议备份存档，并在测试世界中验证设备行为。
+
+此次发布前重命名使用新的 Mod ID、注册前缀和资源命名空间，不兼容旧开发版的游戏存档，也不提供旧标识迁移。
+
+## 从源码构建
+
+在项目根目录执行：
+
+```powershell
+.\gradlew.bat --gradle-user-home .gradle-user-home build
+```
+
+正式游戏 JAR 位于 `build/libs/gtnhmelogisticsenhancement-<version>.jar`。项目保留既定 Minecraft、Forge、AE2、Gradle 和 Java 工具链版本；具体开发状态及尚未完成的游戏验收见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)。
+
+版本号沿用现有 Git 版本生成逻辑；本地开发构建可能包含分支、提交和 `dirty` 后缀，以 `build/libs` 中的实际文件名及 JAR 元数据为准。
 
 ## 基本使用方法
 
