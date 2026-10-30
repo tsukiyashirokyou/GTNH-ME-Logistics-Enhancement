@@ -301,16 +301,6 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
             || this.quarantinedCells != null;
     }
 
-    /** Code-only endpoint for the future validated binding flow. No player binding gesture is added here. */
-    public void setTransferTarget(final TransferTarget target) {
-        this.requireServer();
-        this.transfer.setTarget(target);
-    }
-
-    public TransferTarget getTransferTarget() {
-        return this.transfer.getTarget();
-    }
-
     /** Server-thread API for later binding/GUI code; no temporary player binding mechanism. */
     public UUID registerTransferTarget(final TransferTarget target) {
         this.requireServer();
@@ -338,6 +328,15 @@ public class TileMETransferDrive extends AENetworkInvTile implements ICellContai
 
     public TargetRegistry.Route getTransferGroupRoute(final int group) {
         return this.transfer.getRoute(group);
+    }
+
+    public int getTransferGroupFillPercent(final int group) {
+        return this.transfer.getFillPercent(group);
+    }
+
+    public void setTransferGroupFillPercent(final int group, final int percent) {
+        this.requireServer();
+        this.transfer.setFillPercent(group, percent);
     }
 
     /** Status of the most recent cycle's resolution; it is not a persistent network identity. */

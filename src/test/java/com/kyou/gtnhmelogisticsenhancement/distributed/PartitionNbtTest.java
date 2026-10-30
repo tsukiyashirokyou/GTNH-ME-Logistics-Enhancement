@@ -41,7 +41,7 @@ public class PartitionNbtTest {
     };
 
     @Test
-    public void roundTripPreservesLongCountsVersionsAndShrunkLegacySlots() {
+    public void roundTripPreservesLongCountsVersionsAndSlotsAfterConfigurationShrink() {
         final PartitionStore<String> original = new PartitionStore<>(16, Long.MAX_VALUE);
         for (int i = 0; i < 16; i++) PartitionStoreTest.add(original, "K" + i, Long.MAX_VALUE);
         original.remove("K3", Long.MAX_VALUE);
@@ -88,6 +88,8 @@ public class PartitionNbtTest {
     public void missingWrongTypedAndUnknownConfigurationFieldsRemainRawEvidence() {
         final Iterable<Consumer<NBTTagCompound>> mutations = Arrays.asList(
             tag -> tag.removeTag("version"),
+            tag -> tag.setInteger("version", 0),
+            tag -> tag.setInteger("version", 1),
             tag -> tag.setInteger("version", 99),
             tag -> tag.setString("type", "fluid"),
             tag -> tag.setString("capacity", "1600"),

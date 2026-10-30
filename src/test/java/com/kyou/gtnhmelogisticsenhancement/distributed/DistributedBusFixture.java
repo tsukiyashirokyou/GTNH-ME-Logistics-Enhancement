@@ -29,6 +29,21 @@ import gregtech.api.util.ItemEjectionHelper;
 /** Real GT helper/MTE superclass and AE cell policy; insertion callbacks are deliberately simulated destinations. */
 public class DistributedBusFixture {
 
+    public void nativeGtWrenchRecognizesDriveAndPickaxeFallbackRemainsAvailable() {
+        final com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive block = new com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive();
+        final gregtech.common.tools.ToolWrench wrench = new gregtech.common.tools.ToolWrench();
+        for (int meta = 0; meta < 16; meta++) {
+            assertEquals("wrench", block.getHarvestTool(meta));
+            assertEquals(0, block.getHarvestLevel(meta));
+            assertTrue(wrench.isMinableBlock(block, meta));
+            assertTrue(block.isToolEffective("wrench", meta));
+        }
+        final net.minecraft.item.ItemPickaxe pickaxe = new net.minecraft.item.ItemPickaxe(Item.ToolMaterial.IRON) {};
+        // Fixed ForgeHooks.canHarvestBlock falls back to player/item harvesting when toolLevel < 0.
+        assertEquals(-1, pickaxe.getHarvestLevel(new ItemStack(pickaxe), "wrench"));
+        assertTrue(pickaxe.func_150897_b(block));
+    }
+
     private static final Item ITEM = new Item();
     private static final Item RECIPE_BUS = new Item();
     private static final Item RECIPE_CARD = new Item();

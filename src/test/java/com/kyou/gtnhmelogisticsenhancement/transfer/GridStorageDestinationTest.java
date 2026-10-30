@@ -345,6 +345,337 @@ public class GridStorageDestinationTest {
         assertEquals(0, second.insertions);
     }
 
+    @Test
+    public void percentageStopsAtExistingStockPlusHeadroomAndRechecksBeforeActualInsertion() {
+        final Storage storage = new Storage();
+        storage.stored = 75;
+        final Monitor monitor = new Monitor(storage.endpoint);
+        final GridStorageDestination destination = this.limited(this.identity, monitor, 80);
+        assertEquals(5, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(80, storage.stored);
+        assertEquals(95, this.source.count);
+        assertEquals(2, monitor.simulations);
+        assertEquals(2, storage.stockQueries);
+        assertEquals(0, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(80, storage.stored);
+        assertEquals(1, monitor.insertions);
+    }
+
+    @Test
+    public void percentageUsesPinnedPriorityOrderingForMixedStorageWithoutBackendSpecialCases() {
+        final Storage external = new Storage();
+        external.priority = 10;
+        external.capacity = 30;
+        final Storage nativeStorage = new Storage();
+        nativeStorage.capacity = 70;
+        final Monitor monitor = new Monitor(nativeStorage.endpoint, external.busAdapter());
+        assertEquals(
+            80,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(30, external.stored);
+        assertEquals(50, nativeStorage.stored);
+        assertEquals(20, this.source.count);
+    }
+
+    @Test
+    public void stickyStorageUsesOnlyItsNativeHeadroomInsteadOfSummingEveryBackendCapacity() {
+        final Storage sticky = new Storage();
+        sticky.stored = 20;
+        sticky.exposesContents = true;
+        sticky.priority = -100;
+        final MEInventoryHandler bus = sticky.busAdapter();
+        bus.setSticky(true);
+        final Storage ordinary = new Storage();
+        ordinary.capacity = 1000;
+        ordinary.priority = 100;
+        final Monitor monitor = new Monitor(ordinary.endpoint, bus);
+        assertEquals(
+            60,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(80, sticky.stored);
+        assertEquals(0, ordinary.stored);
+        assertEquals(40, this.source.count);
+    }
+
+    @Test
+    public void fullMatchingStickyStorageDoesNotSpillIntoAnUnrelatedEmptyBackend() {
+        final Storage sticky = new Storage();
+        sticky.stored = sticky.capacity;
+        sticky.exposesContents = true;
+        final MEInventoryHandler bus = sticky.busAdapter();
+        bus.setSticky(true);
+        final Storage ordinary = new Storage();
+        final Monitor monitor = new Monitor(ordinary.endpoint, bus);
+        assertEquals(
+            0,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(100, this.source.count);
+        assertEquals(100, sticky.stored);
+        assertEquals(0, ordinary.stored);
+        assertEquals(0, monitor.insertions);
+    }
+
+    @Test
+    public void stickyCapacityShrinkingAfterProbeReturnsActualRemainderForAllThreeTypes() {
+        for (final IAEStackType<?> type : new IAEStackType<?>[] { this.itemType, type("fluid", 1000),
+            type("essentia", 1) }) {
+            final IAEStack<?> key = stack(type, IAEStack.class, "same", 1);
+            final Storage sticky = new Storage();
+            sticky.prioritized = true;
+            sticky.afterStockQuery = () -> { if (sticky.stockQueries == 2) sticky.capacity = 1; };
+            final MEInventoryHandler bus = sticky.busAdapter();
+            bus.setSticky(true);
+            final Storage ordinary = new Storage();
+            final Monitor monitor = new Monitor(type, ordinary.endpoint, bus);
+            this.source.count = 100;
+            assertEquals(
+                1,
+                this.transaction.move(key, 100, this.source, this.limited(key, monitor, 80), amount -> amount));
+            assertEquals(99, this.source.count);
+            assertEquals(1, sticky.stored);
+            assertEquals(0, ordinary.stored);
+            assertEquals(100, this.source.count + sticky.stored + ordinary.stored);
+            assertFalse(this.transaction.isPending());
+        }
+    }
+
+    @Test
+    public void stickyFilterRejectionLeavesOtherNativeWritableStorageAvailable() {
+        final Storage sticky = new Storage();
+        sticky.prioritized = true;
+        sticky.accepts = false;
+        final MEInventoryHandler bus = sticky.busAdapter();
+        bus.setSticky(true);
+        final Storage ordinary = new Storage();
+        final Monitor monitor = new Monitor(ordinary.endpoint, bus);
+        assertEquals(
+            80,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(0, sticky.stored);
+        assertEquals(80, ordinary.stored);
+        assertEquals(20, this.source.count);
+    }
+
+    @Test
+    public void separateCapacityCheckIsNeverReusedAsAuthorizationForALaterAttempt() {
+        final Storage storage = new Storage();
+        storage.capacity = 2;
+        final Monitor monitor = new Monitor(storage.endpoint);
+        final GridStorageDestination destination = this.limited(this.identity, monitor, 80);
+        assertEquals(1, destination.simulate(100));
+        storage.capacity = 0;
+        assertEquals(0, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(100, this.source.count);
+        assertEquals(0, storage.stored);
+        assertEquals(0, monitor.insertions);
+        assertFalse(this.transaction.isPending());
+    }
+
+    @Test
+    public void percentageAlsoAppliesToFluidAndRegisteredEssentiaUnits() {
+        for (final IAEStackType<?> type : new IAEStackType<?>[] { type("fluid", 1000), type("essentia", 1) }) {
+            final IAEStack<?> key = stack(type, IAEStack.class, "same", 1);
+            final Storage storage = new Storage();
+            final Monitor monitor = new Monitor(type, storage.endpoint);
+            this.source.count = 100;
+            assertEquals(
+                80,
+                this.transaction.move(key, 100, this.source, this.limited(key, monitor, 80), amount -> amount));
+            assertEquals(80, storage.stored);
+            assertEquals(20, this.source.count);
+        }
+    }
+
+    @Test
+    public void percentageCapacityChangeAfterExtractionReturnsOnlyTheNewRemainder() {
+        final Storage storage = new Storage();
+        final Monitor monitor = new Monitor(storage.endpoint);
+        this.source.afterExtract = () -> storage.stored = 70;
+        assertEquals(
+            10,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(80, storage.stored);
+        assertEquals(90, this.source.count);
+        assertFalse(this.transaction.isPending());
+    }
+
+    @Test
+    public void percentageRollbackFailureKeepsEvidenceAndDoesNotRepeatInsertion() {
+        final Storage storage = new Storage();
+        final Monitor monitor = new Monitor(storage.endpoint);
+        this.source.afterExtract = () -> storage.stored = 70;
+        this.source.restoreLimit = 0;
+        final GridStorageDestination destination = this.limited(this.identity, monitor, 80);
+        assertEquals(10, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(70, this.transaction.getHeld());
+        assertEquals(TransferTransaction.Phase.RECOVERABLE, this.transaction.getPhase());
+        assertEquals(0, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(1, monitor.insertions);
+        assertEquals(100, this.source.count + this.transaction.getHeld() + 10);
+    }
+
+    @Test
+    public void defaultPercentageAddsNoQueriesAndZeroNeverTouchesTheNetwork() {
+        final Storage storage = new Storage();
+        final Monitor monitor = new Monitor(storage.endpoint);
+        assertEquals(
+            80,
+            this.transaction
+                .move(this.identity, 80, this.source, this.limited(this.identity, monitor, 100), amount -> amount));
+        assertEquals(0, storage.stockQueries);
+        assertEquals(1, monitor.simulations);
+        final GridStorageDestination off = new GridStorageDestination(
+            this.identity,
+            this.origin,
+            this.actionSource,
+            () -> { throw new AssertionError("Zero percent must not query a target"); },
+            (result, maximum) -> GridStorageDestination.checkedQuantity(this.identity, result, maximum),
+            0);
+        assertEquals(0, off.simulate(100));
+        assertEquals(0, off.insert(100));
+    }
+
+    @Test
+    public void limitedMultiTargetFailoverOnlySendsTheRemainingSourceQuantity() {
+        final Storage firstStore = new Storage(), secondStore = new Storage();
+        final Monitor first = new Monitor(firstStore.endpoint), second = new Monitor(secondStore.endpoint);
+        final Monitor original = new Monitor(new Storage().endpoint);
+        final RoutingCycle<Monitor> cycle = new RoutingCycle<>(this.registry(), () -> original, binding -> {
+            final Monitor target = binding.getX() == 0 ? first : second;
+            return new RoutingCycle.Endpoint<>(target, () -> target, () -> true);
+        });
+        cycle.prepare(4);
+        final RoutedTransfer<IAEStack<?>, Monitor> route = new RoutedTransfer<>(this.identity, 100, cycle, 0);
+        assertEquals(
+            80,
+            route.step(
+                100,
+                this.transaction,
+                this.source,
+                target -> this.limited(this.identity, target.getGrid(), 80),
+                amount -> amount));
+        assertEquals(20, route.getRemaining());
+        assertEquals(
+            20,
+            route.step(
+                100,
+                this.transaction,
+                this.source,
+                target -> this.limited(this.identity, target.getGrid(), 80),
+                amount -> amount));
+        assertEquals(80, firstStore.stored);
+        assertEquals(20, secondStore.stored);
+        assertEquals(0, this.source.count);
+        assertTrue(route.isFinished());
+    }
+
+    @Test
+    public void targetOfflineDuringCapacityProbeDoesNotAuthorizeExtraction() {
+        final Monitor monitor = new Monitor(new Storage().endpoint);
+        final AtomicReference<IMEMonitor<?>> current = new AtomicReference<>(monitor.endpoint);
+        monitor.afterSimulation = () -> current.set(null);
+        final GridStorageDestination destination = new GridStorageDestination(
+            this.identity,
+            this.origin,
+            this.actionSource,
+            current::get,
+            (result, maximum) -> GridStorageDestination.checkedQuantity(this.identity, result, maximum),
+            80);
+        assertEquals(0, this.transaction.move(this.identity, 100, this.source, destination, amount -> amount));
+        assertEquals(100, this.source.count);
+        assertEquals(0, monitor.insertions);
+        assertFalse(this.transaction.isPending());
+        assertFalse(TransferInjectionGuard.blocks(this.origin));
+    }
+
+    @Test
+    public void actualFillReductionSettlesOnlyDeliveredQuantity() {
+        final Storage storage = new Storage();
+        final Monitor monitor = new Monitor(storage.endpoint);
+        this.source.afterExtract = () -> storage.stored = 70;
+        final long[] settled = { -1 };
+        final TransferTransaction.Energy energy = new TransferTransaction.Energy() {
+
+            @Override
+            public long reserve(final long amount) {
+                assertEquals(80, amount);
+                return amount;
+            }
+
+            @Override
+            public void settle(final long delivered, final boolean certain) {
+                assertTrue(certain);
+                settled[0] = delivered;
+            }
+        };
+        assertEquals(
+            10,
+            this.transaction.move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), energy));
+        assertEquals(10, settled[0]);
+        assertEquals(90, this.source.count);
+    }
+
+    @Test
+    public void saturatedSafeProbeIsConservativeAndNeverOffersMoreThanIntMax() {
+        final Storage storage = new Storage();
+        storage.capacity = 20000000000L;
+        storage.stored = 10000000000L;
+        final Monitor monitor = new Monitor(storage.endpoint);
+        assertEquals(
+            0,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(100, this.source.count);
+        assertEquals(10000000000L, storage.stored);
+        assertEquals(
+            100,
+            this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 100), amount -> amount));
+        assertEquals(10000000100L, storage.stored);
+    }
+
+    @Test
+    public void invalidActualReturnUnderFillLimitStillQuarantinesWithoutReplay() {
+        final Storage storage = new Storage();
+        storage.invalidReturn = true;
+        final Monitor monitor = new Monitor(storage.endpoint);
+        final GridStorageDestination destination = this.limited(this.identity, monitor, 80);
+        this.transaction.move(this.identity, 100, this.source, destination, amount -> amount);
+        assertEquals(TransferTransaction.Phase.UNCERTAIN, this.transaction.getPhase());
+        this.transaction.move(this.identity, 100, this.source, destination, amount -> amount);
+        assertEquals(1, monitor.insertions);
+        assertFalse(TransferInjectionGuard.blocks(this.origin));
+    }
+
+    @Test
+    public void invalidCapacitySimulationCannotExtractStockOrLeakTheInjectionGuard() {
+        final Monitor monitor = new Monitor(new Storage().endpoint);
+        monitor.invalidSimulation = true;
+        org.junit.Assert.assertThrows(
+            IllegalStateException.class,
+            () -> this.transaction
+                .move(this.identity, 100, this.source, this.limited(this.identity, monitor, 80), amount -> amount));
+        assertEquals(100, this.source.count);
+        assertEquals(0, monitor.insertions);
+        assertFalse(this.transaction.isPending());
+        assertFalse(TransferInjectionGuard.blocks(this.origin));
+    }
+
+    private GridStorageDestination limited(final IAEStack<?> key, final Monitor monitor, final int percent) {
+        return new GridStorageDestination(
+            key,
+            this.origin,
+            this.actionSource,
+            () -> monitor.endpoint,
+            (result, maximum) -> GridStorageDestination.checkedQuantity(key, result, maximum),
+            percent);
+    }
+
     private TargetRegistry registry() {
         final TargetRegistry registry = new TargetRegistry();
         registry.register(new TransferTarget(UUID.randomUUID(), 0, 0, 64, 0));
@@ -408,7 +739,9 @@ public class GridStorageDestinationTest {
         int simulations;
         int insertions;
         boolean intercepts;
+        boolean invalidSimulation;
         long intercepted;
+        Runnable afterSimulation = () -> {};
 
         Monitor(final IMEInventoryHandler... storage) {
             this(itemType, storage);
@@ -425,6 +758,11 @@ public class GridStorageDestinationTest {
 
         @Override
         public Object invoke(final Object proxy, final Method method, final Object[] args) {
+            if (method.getName()
+                .equals("getExternalNetworkInventory")) {
+                assertTrue(TransferInjectionGuard.blocks(origin));
+                return this.network;
+            }
             if (!method.getName()
                 .equals("injectItems")) {
                 throw new AssertionError("Unexpected monitor call: " + method.getName());
@@ -438,13 +776,17 @@ public class GridStorageDestinationTest {
             } else {
                 this.simulations++;
             }
+            if (mode == Actionable.SIMULATE && this.invalidSimulation) return input.copy()
+                .setStackSize(input.getStackSize() + 1);
             if (this.intercepts) {
                 if (mode == Actionable.MODULATE) {
                     this.intercepted += input.getStackSize();
                 }
                 return null;
             }
-            return this.network.injectItems(input, mode, (BaseActionSource) args[2]);
+            final Object result = this.network.injectItems(input, mode, (BaseActionSource) args[2]);
+            if (mode == Actionable.SIMULATE) this.afterSimulation.run();
+            return result;
         }
     }
 
@@ -482,6 +824,10 @@ public class GridStorageDestinationTest {
         boolean accepts = true;
         boolean voidOverflow;
         boolean invalidReturn;
+        int stockQueries;
+        boolean prioritized;
+        boolean exposesContents;
+        Runnable afterStockQuery = () -> {};
         Object feedbackOrigin;
 
         Storage() {
@@ -500,6 +846,15 @@ public class GridStorageDestinationTest {
         @Override
         public Object invoke(final Object proxy, final Method method, final Object[] args) {
             switch (method.getName()) {
+                case "getExternalNetworkInventory":
+                    return null;
+                case "getAvailableItem":
+                    this.stockQueries++;
+                    final Object result = this.stored == 0 ? null
+                        : ((IAEStack) args[0]).copy()
+                            .setStackSize(this.stored);
+                    this.afterStockQuery.run();
+                    return result;
                 case "getPriority":
                     return this.priority;
                 case "getAccess":
@@ -508,14 +863,17 @@ public class GridStorageDestinationTest {
                     return 0;
                 case "getSticky":
                 case "isAutoCraftingInventory":
-                case "isPrioritized":
                     return false;
+                case "isPrioritized":
+                    return this.prioritized;
                 case "validForPass":
                     return (int) args[0] == 2;
                 case "canAccept":
                     return this.accepts && !TransferInjectionGuard.blocks(this.feedbackOrigin);
                 case "extractItems":
-                    return null;
+                    return !this.exposesContents || this.stored == 0 ? null
+                        : ((IAEStack) args[0]).copy()
+                            .setStackSize(Math.min(this.stored, ((IAEStack) args[0]).getStackSize()));
                 case "injectItems":
                     final IAEStack input = (IAEStack) args[0];
                     final Actionable mode = (Actionable) args[1];

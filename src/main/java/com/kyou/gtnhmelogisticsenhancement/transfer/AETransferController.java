@@ -289,8 +289,9 @@ public final class AETransferController {
             return;
         }
         this.sourceSlot = this.nextSlot++;
-        if (this.cycle.targetsForGroup(DriveSlotLayout.group(this.sourceSlot))
-            .isEmpty()) {
+        if (this.registry.getFillPercent(DriveSlotLayout.group(this.sourceSlot)) == 0
+            || this.cycle.targetsForGroup(DriveSlotLayout.group(this.sourceSlot))
+                .isEmpty()) {
             return;
         }
         this.sourceCell = this.tile.getStackInSlot(this.sourceSlot);
@@ -395,7 +396,8 @@ public final class AETransferController {
                         .<IStorageGrid>getCache(IStorageGrid.class)
                         .getMEMonitor(identity.getStackType())
                     : null,
-            (result, maximum) -> this.quantity(identity, result, maximum));
+            (result, maximum) -> this.quantity(identity, result, maximum),
+            this.registry.getFillPercent(DriveSlotLayout.group(this.sourceSlot)));
     }
 
     private void sourceChanged(final IAEStack<?> identity, final long delta) {
@@ -615,30 +617,6 @@ public final class AETransferController {
         this.stop("suspended");
     }
 
-    /** Compatibility entry point for the former single-target code API. */
-    public TransferTarget getTarget() {
-        final List<TransferTarget> targets = this.registry.getTargets();
-        return targets.size() == 1 ? targets.get(0) : null;
-    }
-
-    public void setTarget(final TransferTarget value) {
-        this.requireEditable();
-        if (this.registry.getTargets()
-            .size() > 1) {
-            throw new IllegalStateException("Use the multi-target API to edit multiple bindings");
-        }
-        final TargetRegistry replacement = new TargetRegistry();
-        if (value != null) {
-            this.validateBinding(value);
-            replacement.register(value);
-            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
-                replacement.setRoute(group, TargetRegistry.Route.specific(value.getId()));
-            }
-        }
-        this.registry = replacement;
-        this.routingChanged();
-    }
-
     public UUID registerTarget(final TransferTarget target) {
         this.requireEditable();
         this.validateBinding(target);
@@ -671,6 +649,19 @@ public final class AETransferController {
 
     public TargetRegistry.Route getRoute(final int group) {
         return this.registry.getRoute(group);
+    }
+
+    public int getFillPercent(final int group) {
+        return this.registry.getFillPercent(group);
+    }
+
+    public void setFillPercent(final int group, final int percent) {
+        this.requireEditable();
+        TransferFillLimit.validate(percent);
+        if (this.registry.getFillPercent(group) != percent) {
+            this.registry.setFillPercent(group, percent);
+            this.routingChanged();
+        }
     }
 
     public RoutingCycle.Status getTargetStatus(final UUID id) {
@@ -752,7 +743,6 @@ public final class AETransferController {
 
     public void writeToNBT(final NBTTagCompound data) {
         data.setInteger("transferPeriodSeconds", this.clock.getSeconds());
-        data.removeTag("singleTransferTarget");
         data.removeTag("transferRouting");
         data.removeTag("invalidTransferRouting");
         if (this.quarantinedRouting != null) {
@@ -816,18 +806,12 @@ public final class AETransferController {
                     throw new IllegalArgumentException("Invalid routing tag type");
                 }
                 this.registry = TargetRegistryNbt.read(data.getCompoundTag("transferRouting"));
-            } else if (data.hasKey("singleTransferTarget")) {
-                if (!data.hasKey("singleTransferTarget", 10)) {
-                    throw new IllegalArgumentException("Invalid legacy target tag type");
-                }
-                this.registry = TargetRegistryNbt.legacy(data.getCompoundTag("singleTransferTarget"));
             }
         } catch (final RuntimeException invalid) {
             this.quarantinedRouting = new NBTTagCompound();
-            final String key = data.hasKey("transferRouting") ? "transferRouting" : "singleTransferTarget";
             this.quarantinedRouting.setTag(
-                key,
-                data.getTag(key)
+                "transferRouting",
+                data.getTag("transferRouting")
                     .copy());
             this.status = "invalid_routing_configuration";
         }
@@ -967,7 +951,9 @@ public final class AETransferController {
         }
         for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {
             final IMEInventory<?> inventory = this.tile.getNativeCellHandler(slot);
-            if (inventory != null && inventory.getStackType() == type && SourceCellAccess.canTransferFrom(inventory)) {
+            if (inventory != null && inventory.getStackType() == type
+                && SourceCellAccess.canTransferFrom(inventory)
+                && this.registry.getFillPercent(DriveSlotLayout.group(slot)) > 0) {
                 groups[DriveSlotLayout.group(slot)] = true;
             }
         }

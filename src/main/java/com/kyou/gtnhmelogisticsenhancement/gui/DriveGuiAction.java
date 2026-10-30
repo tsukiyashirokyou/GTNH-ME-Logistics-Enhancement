@@ -16,7 +16,8 @@ public final class DriveGuiAction {
         DELETE_TARGET,
         TOGGLE_TARGET,
         SPECIFIC_MODE,
-        STORAGE_PRIORITY
+        STORAGE_PRIORITY,
+        FILL_PERCENT
     }
 
     public final Kind kind;

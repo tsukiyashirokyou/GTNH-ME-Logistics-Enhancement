@@ -57,30 +57,18 @@ public class TargetRegistryNbtTest {
     }
 
     @Test
-    public void legacySingleTargetKeepsItsIdAndIsExplicitlyAssignedToAllGroups() {
-        final TransferTarget previous = target(0, 0);
-        final TargetRegistry registry = new TargetRegistry();
-        registry.register(previous);
-        final NBTTagCompound entry = TargetRegistryNbt.write(registry)
-            .getTagList("targets", 10)
-            .getCompoundTagAt(0);
-        entry.removeTag("name");
-        entry.removeTag("priority");
-        final TargetRegistry migrated = TargetRegistryNbt.legacy(entry);
+    public void freshRegistryRoundTripKeepsAllGroupsUnassignedAndAtFullFill() {
+        final TargetRegistry restored = TargetRegistryNbt.read(TargetRegistryNbt.write(new TargetRegistry()));
         assertEquals(
-            previous.getId(),
-            migrated.getTargets()
-                .get(0)
-                .getId());
+            0,
+            restored.getTargets()
+                .size());
         for (int group = 0; group < 8; group++) {
             assertEquals(
-                TargetRegistry.Mode.SPECIFIC,
-                migrated.getRoute(group)
+                TargetRegistry.Mode.UNASSIGNED,
+                restored.getRoute(group)
                     .getMode());
-            assertEquals(
-                previous.getId(),
-                migrated.getRoute(group)
-                    .getTargetId());
+            assertEquals(100, restored.getFillPercent(group));
         }
     }
 
@@ -149,13 +137,12 @@ public class TargetRegistryNbtTest {
         TargetRegistryNbt.read(data);
     }
 
-    @Test
-    public void v1SingleTargetMigratesToAOneElementSetAndIsSavedAsV2() {
+    @Test(expected = IllegalArgumentException.class)
+    public void singleTargetFieldCannotReplaceTheCurrentSelectionSet() {
         final TargetRegistry registry = new TargetRegistry();
         final TransferTarget target = target(0, 0);
         registry.register(target);
         final NBTTagCompound old = TargetRegistryNbt.write(registry);
-        old.setInteger("version", 1);
         final NBTTagCompound route = old.getTagList("routes", 10)
             .getCompoundTagAt(4);
         route.setString("mode", "SPECIFIC");
@@ -163,15 +150,7 @@ public class TargetRegistryNbtTest {
             "targetId",
             target.getId()
                 .toString());
-        final TargetRegistry migrated = TargetRegistryNbt.read(old);
-        assertEquals(
-            java.util.Collections.singleton(target.getId()),
-            migrated.getRoute(4)
-                .getTargetIds());
-        assertEquals(
-            2,
-            TargetRegistryNbt.write(migrated)
-                .getInteger("version"));
+        TargetRegistryNbt.read(old);
     }
 
     @Test
@@ -234,6 +213,78 @@ public class TargetRegistryNbtTest {
             .getCompoundTagAt(0)
             .setTag("targetIds", selected);
         TargetRegistryNbt.read(data);
+    }
+
+    @Test
+    public void fillPercentRoundTripsForEachGroupWithoutChangingRoutesOrTargetPriorities() {
+        final TargetRegistry registry = new TargetRegistry();
+        final TransferTarget target = target(0, -123);
+        registry.register(target);
+        for (int group = 0; group < 8; group++) {
+            assertEquals(100, registry.getFillPercent(group));
+            registry.setFillPercent(group, group == 7 ? 100 : group * 10);
+            registry.setRoute(group, TargetRegistry.Route.specific(target.getId()));
+        }
+        final TargetRegistry restored = TargetRegistryNbt.read(TargetRegistryNbt.write(registry));
+        for (int group = 0; group < 8; group++) {
+            assertEquals(group == 7 ? 100 : group * 10, restored.getFillPercent(group));
+            assertEquals(
+                target.getId(),
+                restored.getRoute(group)
+                    .getTargetId());
+        }
+        assertEquals(
+            -123,
+            restored.getTargets()
+                .get(0)
+                .getPriority());
+        restored.remove(target.getId());
+        assertEquals(30, restored.getFillPercent(3));
+        assertEquals(
+            TargetRegistry.Mode.UNASSIGNED,
+            restored.getRoute(3)
+                .getMode());
+    }
+
+    @Test
+    public void previousRoutingVersionsAreRejectedWithoutMigration() {
+        for (final int version : new int[] { 1, 2 }) {
+            final TargetRegistry registry = new TargetRegistry();
+            final TransferTarget target = target(0, 0);
+            registry.register(target);
+            registry.setRoute(4, TargetRegistry.Route.specific(target.getId()));
+            final NBTTagCompound old = TargetRegistryNbt.write(registry);
+            old.setInteger("version", version);
+            for (int group = 0; group < 8; group++) {
+                final NBTTagCompound entry = old.getTagList("routes", 10)
+                    .getCompoundTagAt(group);
+                entry.removeTag("fillPercent");
+                if (version == 1 && group == 4) {
+                    entry.removeTag("targetIds");
+                    entry.setString(
+                        "targetId",
+                        target.getId()
+                            .toString());
+                }
+            }
+            org.junit.Assert.assertThrows(IllegalArgumentException.class, () -> TargetRegistryNbt.read(old));
+        }
+    }
+
+    @Test
+    public void corruptPercentagesAreRejectedInsteadOfClampedAsUserInput() {
+        for (final java.util.function.Consumer<NBTTagCompound> mutation : java.util.Arrays.<java.util.function.Consumer<NBTTagCompound>>asList(
+            entry -> entry.removeTag("fillPercent"),
+            entry -> entry.setString("fillPercent", "80"),
+            entry -> entry.setLong("fillPercent", 80),
+            entry -> entry.setInteger("fillPercent", -1),
+            entry -> entry.setInteger("fillPercent", 101))) {
+            final NBTTagCompound saved = TargetRegistryNbt.write(new TargetRegistry());
+            mutation.accept(
+                saved.getTagList("routes", 10)
+                    .getCompoundTagAt(0));
+            org.junit.Assert.assertThrows(IllegalArgumentException.class, () -> TargetRegistryNbt.read(saved));
+        }
     }
 
     private static TransferTarget target(final int x, final int priority) {

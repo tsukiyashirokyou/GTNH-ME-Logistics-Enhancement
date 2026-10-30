@@ -71,9 +71,11 @@ public final class TargetRegistry {
 
     private final Map<UUID, TransferTarget> targets = new LinkedHashMap<>();
     private final Route[] routes = new Route[DriveSlotLayout.GROUP_COUNT];
+    private final int[] fillPercents = new int[DriveSlotLayout.GROUP_COUNT];
 
     public TargetRegistry() {
         Arrays.fill(this.routes, Route.unassigned());
+        Arrays.fill(this.fillPercents, TransferFillLimit.DEFAULT_PERCENT);
     }
 
     /** Same coordinates reuse a binding; same grids at different coordinates remain separate bindings. */
@@ -127,6 +129,16 @@ public final class TargetRegistry {
     public Route getRoute(final int group) {
         DriveSlotLayout.slot(group, 0);
         return this.routes[group];
+    }
+
+    public int getFillPercent(final int group) {
+        DriveSlotLayout.slot(group, 0);
+        return this.fillPercents[group];
+    }
+
+    public void setFillPercent(final int group, final int percent) {
+        DriveSlotLayout.slot(group, 0);
+        this.fillPercents[group] = TransferFillLimit.validate(percent);
     }
 
     public List<TransferTarget> getTargets() {

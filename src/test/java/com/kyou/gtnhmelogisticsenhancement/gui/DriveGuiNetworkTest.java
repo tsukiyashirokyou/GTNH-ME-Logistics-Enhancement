@@ -193,6 +193,27 @@ public class DriveGuiNetworkTest {
     }
 
     @Test
+    public void groupFillRequestsRoundTripThroughTheExistingProtocol() {
+        final DriveGuiNetwork.ActionMessage request = new DriveGuiNetwork.ActionMessage();
+        request.window = 42;
+        request.action = new DriveGuiAction(DriveGuiAction.Kind.FILL_PERCENT, UUID.randomUUID(), 7, 6, null, "", "80");
+        final ByteBuf buffer = Unpooled.buffer();
+        try {
+            request.toBytes(buffer);
+            final DriveGuiNetwork.ActionMessage decoded = new DriveGuiNetwork.ActionMessage();
+            decoded.fromBytes(buffer);
+            assertEquals(42, decoded.window);
+            assertEquals(DriveGuiAction.Kind.FILL_PERCENT, decoded.action.kind);
+            assertEquals(6, decoded.action.group);
+            assertEquals("80", decoded.action.number);
+            assertEquals(request.action.session, decoded.action.session);
+            assertEquals(7, decoded.action.revision);
+        } finally {
+            buffer.release();
+        }
+    }
+
+    @Test
     public void maximumSelectionsAndUnicodeAliasesFitTheNativeSnapshotBudget() {
         final net.minecraft.nbt.NBTTagCompound state = new net.minecraft.nbt.NBTTagCompound();
         state.setInteger("storagePriority", Integer.MIN_VALUE);
@@ -222,6 +243,7 @@ public class DriveGuiNetworkTest {
         for (int group = 0; group < 8; group++) {
             state.setTag("selected" + group, ids.copy());
             state.setString("route" + group, "SPECIFIC");
+            state.setInteger("fill" + group, group * 10);
         }
         final DriveGuiNetwork.StateMessage request = new DriveGuiNetwork.StateMessage();
         request.window = 1;

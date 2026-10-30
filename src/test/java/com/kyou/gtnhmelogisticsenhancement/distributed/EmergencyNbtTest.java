@@ -44,7 +44,7 @@ public class EmergencyNbtTest {
     }
 
     @Test
-    public void actualLegacyVersionOneMigratesWithoutClippingShrunkStockOrChangingSlots() {
+    public void unsupportedVersionOneRemainsIsolatedWithItsCompleteOriginalStockEvidence() {
         final PartitionStore<String> store = new PartitionStore<>(16, 1600);
         for (int i = 0; i < 16; i++) PartitionStoreTest.add(store, "K" + i, 1000 + i);
         store.remove("K7", 1007);
@@ -56,25 +56,14 @@ public class EmergencyNbtTest {
         for (int i = 0; i < entries.tagCount(); i++) entries.getCompoundTagAt(i)
             .removeTag("emergency");
         final PartitionNbt.Loaded<String> restored = PartitionNbt.read(legacy, PartitionNbtTest.CODEC);
-        assertFalse(restored.isolated());
-        assertEquals(
-            store.totalQuantity(),
-            restored.store()
-                .totalQuantity());
-        assertEquals(
-            15,
-            restored.store()
-                .normalEntries()
-                .size());
-        assertEquals(
-            8,
-            restored.store()
-                .entries()
-                .get(7).slot);
-        assertEquals(
-            2,
-            PartitionNbt.write(restored, PartitionNbtTest.CODEC)
-                .getInteger("version"));
+        assertTrue(restored.isolated());
+        assertEquals(legacy, restored.evidence());
+        assertThrows(IllegalStateException.class, restored::store);
+        final PartitionNbt.Loaded<String> reloaded = PartitionNbt
+            .read(PartitionNbt.write(restored, PartitionNbtTest.CODEC), PartitionNbtTest.CODEC);
+        assertTrue(reloaded.isolated());
+        assertEquals(legacy, reloaded.evidence());
+        assertThrows(IllegalStateException.class, reloaded::store);
     }
 
     @Test

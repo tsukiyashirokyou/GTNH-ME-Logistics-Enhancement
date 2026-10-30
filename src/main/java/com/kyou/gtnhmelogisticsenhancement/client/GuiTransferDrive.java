@@ -29,6 +29,9 @@ public final class GuiTransferDrive extends GuiContainer {
     private GuiTextField name;
     private GuiTextField priority;
     private GuiTextField storagePriority;
+    private GuiTextField fillPercent;
+    private int fillGroup;
+    private long fillRevision;
     private String selectedId = "";
     private int targetPage;
     private long editorRevision;
@@ -67,6 +70,7 @@ public final class GuiTransferDrive extends GuiContainer {
         this.button(17, 257, 167, 55, tr("save"));
         this.button(18, 183, 187, 129, tr("delete"));
         this.button(19, 137, 64, 29, tr("set"));
+        this.buttonList.add(new GuiButton(9, this.guiLeft + 142, this.guiTop + 79, 24, 14, tr("set")));
         for (int row = 0; row < 4; row++) {
             this.button(20 + row, 203, 23 + row * 17, 109, "");
             this.button(30 + row, 183, 23 + row * 17, 18, "");
@@ -75,6 +79,8 @@ public final class GuiTransferDrive extends GuiContainer {
         this.name = this.field(183, 135, 129, ConfigurationInput.MAX_TEXT_BYTES);
         this.priority = this.field(183, 168, 69, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.storagePriority = this.field(60, 65, 76, ConfigurationInput.MAX_NUMBER_LENGTH);
+        this.fillPercent = this.field(108, 80, 31, ConfigurationInput.MAX_NUMBER_LENGTH);
+        this.refreshFillEditor();
         this.period.setText(
             Integer.toString(
                 this.state()
@@ -102,6 +108,21 @@ public final class GuiTransferDrive extends GuiContainer {
 
     private NBTTagCompound state() {
         return this.container.getClientState();
+    }
+
+    private void refreshFillEditor() {
+        this.fillGroup = this.state()
+            .getInteger("page");
+        final String key = "fill" + this.fillGroup;
+        this.fillPercent.setText(
+            Integer.toString(
+                this.state()
+                    .hasKey(key)
+                        ? this.state()
+                            .getInteger(key)
+                        : 100));
+        this.fillRevision = this.state()
+            .getLong("revision");
     }
 
     private NBTTagList targets() {
@@ -155,6 +176,14 @@ public final class GuiTransferDrive extends GuiContainer {
         this.name.updateCursorCounter();
         this.priority.updateCursorCounter();
         this.storagePriority.updateCursorCounter();
+        this.fillPercent.updateCursorCounter();
+        if (this.fillGroup != this.state()
+            .getInteger("page")) {
+            this.fillPercent.setFocused(false);
+            this.refreshFillEditor();
+        } else if (!this.fillPercent.isFocused()) {
+            this.refreshFillEditor();
+        }
         if (this.metadataSubmitted && this.state()
             .getLong("revision") != this.editorRevision) {
             this.metadataSubmitted = false;
@@ -268,6 +297,20 @@ public final class GuiTransferDrive extends GuiContainer {
             }
         } else {
             switch (button.id) {
+                case 9:
+                    if (this.fillGroup != group) {
+                        this.fillPercent.setFocused(false);
+                        this.refreshFillEditor();
+                        break;
+                    }
+                    this.request(
+                        DriveGuiAction.Kind.FILL_PERCENT,
+                        this.fillGroup,
+                        "",
+                        this.fillPercent.getText(),
+                        this.fillRevision);
+                    this.fillPercent.setFocused(false);
+                    break;
                 case 10:
                 case 11:
                 case 12:
@@ -350,11 +393,16 @@ public final class GuiTransferDrive extends GuiContainer {
             final UUID id = targetId.isEmpty() ? null : UUID.fromString(targetId);
             final String normalizedText = kind == DriveGuiAction.Kind.UPDATE_TARGET ? ConfigurationInput.alias(text)
                 : text;
-            final String normalizedNumber = kind == DriveGuiAction.Kind.PERIOD
-                ? Integer.toString(ConfigurationInput.clampInteger(number, 1, 86400))
-                : kind == DriveGuiAction.Kind.UPDATE_TARGET || kind == DriveGuiAction.Kind.STORAGE_PRIORITY
-                    ? Integer.toString(ConfigurationInput.clampInteger(number, Integer.MIN_VALUE, Integer.MAX_VALUE))
-                    : number;
+            final String normalizedNumber = kind
+                == DriveGuiAction.Kind.FILL_PERCENT
+                    ? Integer.toString(ConfigurationInput.clampInteger(number, 0, 100))
+                    : kind
+                        == DriveGuiAction.Kind.PERIOD
+                            ? Integer.toString(ConfigurationInput.clampInteger(number, 1, 86400))
+                            : kind == DriveGuiAction.Kind.UPDATE_TARGET || kind == DriveGuiAction.Kind.STORAGE_PRIORITY
+                                ? Integer.toString(
+                                    ConfigurationInput.clampInteger(number, Integer.MIN_VALUE, Integer.MAX_VALUE))
+                                : number;
             DriveGuiNetwork.request(
                 this.container.windowId,
                 new DriveGuiAction(
@@ -433,7 +481,8 @@ public final class GuiTransferDrive extends GuiContainer {
                         .toLowerCase(java.util.Locale.ROOT))),
             9,
             81,
-            162);
+            62);
+        this.line(tr("fill_short"), 74, 83, 32);
         final int chosen = this.chosen()
             .tagCount();
         final String mode = this.state()
@@ -517,6 +566,16 @@ public final class GuiTransferDrive extends GuiContainer {
         this.name.drawTextBox();
         this.priority.drawTextBox();
         this.storagePriority.drawTextBox();
+        this.fillPercent.drawTextBox();
+        if (mouseX >= this.guiLeft + 74 && mouseX < this.guiLeft + 167
+            && mouseY >= this.guiTop + 79
+            && mouseY < this.guiTop + 94) {
+            final java.util.List<String> lines = new java.util.ArrayList<>();
+            for (final String key : new String[] { "fill_percent", "fill_hint", "fill_bound_hint" }) {
+                lines.addAll(this.fontRendererObj.listFormattedStringToWidth(tr(key), 240));
+            }
+            this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
+        }
         if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 57
             && mouseY >= this.guiTop + 64
             && mouseY < this.guiTop + 81) {
@@ -528,8 +587,20 @@ public final class GuiTransferDrive extends GuiContainer {
         }
         if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 172
             && mouseY >= this.guiTop + 81
-            && mouseY < this.guiTop + 104) {
+            && mouseY < this.guiTop + 104
+            && (mouseY >= this.guiTop + 94 || mouseX < this.guiLeft + 74)) {
             final java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add(
+                tr(
+                    "route",
+                    this.state()
+                        .getInteger("page") + 1,
+                    tr(
+                        this.state()
+                            .getString(
+                                "route" + this.state()
+                                    .getInteger("page"))
+                            .toLowerCase(java.util.Locale.ROOT))));
             lines.add(
                 tr(
                     "selected_count",
@@ -605,6 +676,7 @@ public final class GuiTransferDrive extends GuiContainer {
         this.name.mouseClicked(mouseX, mouseY, button);
         this.priority.mouseClicked(mouseX, mouseY, button);
         this.storagePriority.mouseClicked(mouseX, mouseY, button);
+        this.fillPercent.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
@@ -612,7 +684,8 @@ public final class GuiTransferDrive extends GuiContainer {
         if (key != Keyboard.KEY_ESCAPE
             && (this.period.textboxKeyTyped(character, key) || this.name.textboxKeyTyped(character, key)
                 || this.priority.textboxKeyTyped(character, key)
-                || this.storagePriority.textboxKeyTyped(character, key))) {
+                || this.storagePriority.textboxKeyTyped(character, key)
+                || this.fillPercent.textboxKeyTyped(character, key))) {
             return;
         }
         super.keyTyped(character, key);

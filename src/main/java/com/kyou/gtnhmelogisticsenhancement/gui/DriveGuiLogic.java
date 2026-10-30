@@ -37,6 +37,8 @@ public final class DriveGuiLogic {
 
         void setStoragePriority(int priority);
 
+        void setFillPercent(int group, int percent);
+
         void updateTarget(UUID id, String name, int priority);
 
         void deleteTarget(UUID id);
@@ -121,6 +123,10 @@ public final class DriveGuiLogic {
                         action.target,
                         ConfigurationInput.alias(action.text),
                         ConfigurationInput.clampInteger(action.number, Integer.MIN_VALUE, Integer.MAX_VALUE));
+                    break;
+                case FILL_PERCENT:
+                    if (!validGroup(action.group)) return "invalid";
+                    context.setFillPercent(action.group, ConfigurationInput.clampInteger(action.number, 0, 100));
                     break;
                 case STORAGE_PRIORITY:
                     context.setStoragePriority(

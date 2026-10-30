@@ -9,7 +9,7 @@ import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 
-/** Strict v1/v2 restoration. Emergency stock is real stock; failed plans are evidence only. */
+/** Strict current-format restoration. Emergency stock is real stock; failed plans are evidence only. */
 public final class PartitionNbt {
 
     private static final int VERSION = 2;
@@ -93,9 +93,8 @@ public final class PartitionNbt {
             if (!(raw instanceof NBTTagCompound)) throw new IllegalArgumentException("Expected compound");
             final NBTTagCompound root = (NBTTagCompound) raw;
             require(root, "version", 3);
-            final int version = root.getInteger("version");
-            if ((version != 1 && version != VERSION) || root.func_150296_c()
-                .size() != (version == 1 ? 7 : 8)) {
+            if (root.getInteger("version") != VERSION || root.func_150296_c()
+                .size() != 8) {
                 throw new IllegalArgumentException("Unknown partition format/fields");
             }
             require(root, "type", 8);
@@ -107,39 +106,30 @@ public final class PartitionNbt {
             if (!codec.type()
                 .equals(root.getString("type"))) throw new IllegalArgumentException("Wrong storage type");
             final NBTTagList tags = list(root, "entries");
-            if (version == 1 && tags.tagCount() > PartitionStore.MAX_PARTITIONS) {
-                throw new IllegalArgumentException("Invalid legacy partition count");
-            }
             final List<PartitionStore.Entry<K>> entries = new ArrayList<>();
             for (int i = 0; i < tags.tagCount(); i++) {
                 final NBTTagCompound tag = tags.getCompoundTagAt(i);
                 if (tag.func_150296_c()
-                    .size() != (version == 1 ? 3 : 4)) {
+                    .size() != 4) {
                     throw new IllegalArgumentException("Unknown entry fields");
                 }
                 require(tag, "slot", 3);
                 require(tag, "quantity", 4);
                 require(tag, "identity", 10);
-                if (version == 2) {
-                    require(tag, "emergency", 1);
-                    if (tag.getByte("emergency") != 0 && tag.getByte("emergency") != 1) {
-                        throw new IllegalArgumentException("Invalid emergency flag");
-                    }
+                require(tag, "emergency", 1);
+                if (tag.getByte("emergency") != 0 && tag.getByte("emergency") != 1) {
+                    throw new IllegalArgumentException("Invalid emergency flag");
                 }
                 final int slot = tag.getInteger("slot");
-                if (version == 1 && slot < 0) throw new IllegalArgumentException("Invalid legacy slot");
                 entries.add(
                     new PartitionStore.Entry<>(
                         slot,
                         codec.read(copy(tag.getCompoundTag("identity"))),
                         tag.getLong("quantity"),
-                        version == 2 && tag.getBoolean("emergency")));
+                        tag.getBoolean("emergency")));
             }
-            final PartitionStore.Failure<K> failure;
-            if (version == 2) {
-                require(root, "failure", 10);
-                failure = readFailure(root.getCompoundTag("failure"), codec);
-            } else failure = null;
+            require(root, "failure", 10);
+            final PartitionStore.Failure<K> failure = readFailure(root.getCompoundTag("failure"), codec);
             return new Loaded<>(
                 PartitionStore.restore(
                     root.getInteger("partitions"),

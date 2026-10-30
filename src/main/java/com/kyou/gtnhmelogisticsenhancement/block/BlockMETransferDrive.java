@@ -37,7 +37,8 @@ public class BlockMETransferDrive extends BlockContainer {
         this.setCreativeTab(CreativeTabs.tabMisc);
         this.setHardness(2.2F);
         this.setResistance(10.0F);
-        this.setHarvestLevel("pickaxe", 0);
+        // GT ToolWrench checks this class. Native Forge harvesting and the existing cell/recovery drops remain.
+        this.setHarvestLevel("wrench", 0);
         this.setStepSound(soundTypeMetal);
     }
 

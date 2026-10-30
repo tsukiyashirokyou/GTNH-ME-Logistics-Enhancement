@@ -305,6 +305,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
                 .name());
         for (int group = 0; group < 8; group++) {
             final TargetRegistry.Route route = this.tile.getTransferGroupRoute(group);
+            config.setInteger("fill" + group, this.tile.getTransferGroupFillPercent(group));
             config.setString(
                 "route" + group,
                 route.getMode()
@@ -430,6 +431,11 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     @Override
     public void setStoragePriority(final int priority) {
         this.tile.setPriority(priority);
+    }
+
+    @Override
+    public void setFillPercent(final int group, final int percent) {
+        this.tile.setTransferGroupFillPercent(group, percent);
     }
 
     @Override

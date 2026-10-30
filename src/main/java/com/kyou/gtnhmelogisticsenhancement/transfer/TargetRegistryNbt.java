@@ -18,7 +18,7 @@ final class TargetRegistryNbt {
 
     static NBTTagCompound write(final TargetRegistry registry) {
         final NBTTagCompound data = new NBTTagCompound();
-        data.setInteger("version", 2);
+        data.setInteger("version", 3);
         final NBTTagList targets = new NBTTagList();
         for (final TransferTarget target : registry.getTargets()) {
             final NBTTagCompound entry = new NBTTagCompound();
@@ -40,6 +40,7 @@ final class TargetRegistryNbt {
             final TargetRegistry.Route route = registry.getRoute(group);
             final NBTTagCompound entry = new NBTTagCompound();
             entry.setInteger("group", group);
+            entry.setInteger("fillPercent", registry.getFillPercent(group));
             entry.setString(
                 "mode",
                 route.getMode()
@@ -58,8 +59,7 @@ final class TargetRegistryNbt {
     }
 
     static TargetRegistry read(final NBTTagCompound data) {
-        require(data.hasKey("version", 3) && (data.getInteger("version") == 1 || data.getInteger("version") == 2));
-        final int version = data.getInteger("version");
+        require(data.hasKey("version", 3) && data.getInteger("version") == 3);
         require(data.hasKey("targets", 9) && data.hasKey("routes", 9));
         final TargetRegistry registry = new TargetRegistry();
         final NBTTagList targets = data.getTagList("targets", 10);
@@ -95,21 +95,16 @@ final class TargetRegistryNbt {
                     route = TargetRegistry.Route.automatic();
                     break;
                 case SPECIFIC:
-                    if (version == 1) {
-                        require(entry.hasKey("targetId", 8) && !entry.hasKey("targetIds"));
-                        route = TargetRegistry.Route.specific(uuid(entry.getString("targetId")));
-                    } else {
-                        require(entry.hasKey("targetIds", 9) && !entry.hasKey("targetId"));
-                        final NBTTagList selected = entry.getTagList("targetIds", 8);
-                        require(
-                            selected.equals(entry.getTag("targetIds"))
-                                && selected.tagCount() <= TargetRegistry.MAX_TARGETS);
-                        final Set<UUID> selectedIds = new LinkedHashSet<>();
-                        for (int selectedIndex = 0; selectedIndex < selected.tagCount(); selectedIndex++) {
-                            require(selectedIds.add(uuid(selected.getStringTagAt(selectedIndex))));
-                        }
-                        route = TargetRegistry.Route.specific(selectedIds);
+                    require(entry.hasKey("targetIds", 9) && !entry.hasKey("targetId"));
+                    final NBTTagList selected = entry.getTagList("targetIds", 8);
+                    require(
+                        selected.equals(entry.getTag("targetIds"))
+                            && selected.tagCount() <= TargetRegistry.MAX_TARGETS);
+                    final Set<UUID> selectedIds = new LinkedHashSet<>();
+                    for (int selectedIndex = 0; selectedIndex < selected.tagCount(); selectedIndex++) {
+                        require(selectedIds.add(uuid(selected.getStringTagAt(selectedIndex))));
                     }
+                    route = TargetRegistry.Route.specific(selectedIds);
                     break;
                 default:
                     route = TargetRegistry.Route.unassigned();
@@ -117,15 +112,8 @@ final class TargetRegistryNbt {
             }
             require(mode == TargetRegistry.Mode.SPECIFIC || !entry.hasKey("targetId") && !entry.hasKey("targetIds"));
             registry.setRoute(group, route);
-        }
-        return registry;
-    }
-
-    static TargetRegistry legacy(final NBTTagCompound entry) {
-        final TargetRegistry registry = new TargetRegistry();
-        final UUID id = registry.register(locator(entry));
-        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
-            registry.setRoute(group, TargetRegistry.Route.specific(id));
+            require(entry.hasKey("fillPercent", 3));
+            registry.setFillPercent(group, entry.getInteger("fillPercent"));
         }
         return registry;
     }

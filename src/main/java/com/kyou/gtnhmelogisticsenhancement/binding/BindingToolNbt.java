@@ -52,7 +52,7 @@ public final class BindingToolNbt {
         try {
             return data.hasKey(DEVICE_KEY, 8) ? uuid(data.getString(DEVICE_KEY)) : newDeviceIdentity;
         } catch (final IllegalArgumentException invalid) {
-            // Legacy/damaged identities receive a fresh placement identity, never a guessed old identity.
+            // An invalid identity must not reuse a different device's binding identity.
             return newDeviceIdentity;
         }
     }

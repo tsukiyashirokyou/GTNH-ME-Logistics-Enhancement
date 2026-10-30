@@ -43,7 +43,8 @@ public class DistributedBusIntegrationTest {
                 { "corruptCardInventoryAndProxyDataRemainPreserved" },
                 { "fixedIdConflictDoesNotOverwriteExistingMachine" },
                 { "nativeFuzzyOreAndInverterPoliciesUseCopiedCards" },
-                { "realMuiPanelHasReadOnlyStockAndServerOnlyViewSync" } });
+                { "realMuiPanelHasReadOnlyStockAndServerOnlyViewSync" },
+                { "nativeGtWrenchRecognizesDriveAndPickaxeFallbackRemainsAvailable" } });
     }
 
     @BeforeClass

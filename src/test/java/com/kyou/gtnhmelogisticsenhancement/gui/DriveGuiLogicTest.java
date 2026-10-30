@@ -377,6 +377,51 @@ public class DriveGuiLogicTest {
         assertEquals(1, this.context.mutations);
     }
 
+    @Test
+    public void fillPercentUsesIndependentGroupsAndClampsUserInputWithoutChangingRouting() {
+        final TargetRegistry.Route route = TargetRegistry.Route.specific(this.first);
+        this.context.registry.setRoute(4, route);
+        for (final String number : new String[] { "80", "-99999999999999999999", "99999999999999999999" }) {
+            assertEquals("ok", this.apply(DriveGuiAction.Kind.FILL_PERCENT, 4, null, "", number));
+            assertEquals(
+                number.equals("80") ? 80 : number.startsWith("-") ? 0 : 100,
+                this.context.registry.getFillPercent(4));
+            assertEquals(100, this.context.registry.getFillPercent(0));
+            assertEquals(route, this.context.registry.getRoute(4));
+        }
+        assertEquals(60, this.context.period);
+        assertEquals(AccessRestriction.READ_WRITE, this.context.access);
+        assertEquals(0, this.context.storagePriority);
+    }
+
+    @Test
+    public void fillPercentRetainsTheExistingSessionPermissionLockAndRevisionGates() {
+        final DriveGuiAction request = this.action(DriveGuiAction.Kind.FILL_PERCENT, 7, null, "", "80");
+        this.context.canUse = false;
+        assertEquals("denied", DriveGuiLogic.apply(request, this.context));
+        this.context.canUse = true;
+        this.context.locked = true;
+        assertEquals("locked", DriveGuiLogic.apply(request, this.context));
+        this.context.locked = false;
+        assertEquals("ok", DriveGuiLogic.apply(request, this.context));
+        assertEquals("stale", DriveGuiLogic.apply(request, this.context));
+        assertEquals(80, this.context.registry.getFillPercent(7));
+        assertEquals(1, this.context.mutations);
+    }
+
+    @Test
+    public void fillPercentRejectsInvalidGroupsAndMalformedNumbers() {
+        for (final int group : new int[] { -1, 8, Integer.MAX_VALUE }) {
+            assertEquals("invalid", this.apply(DriveGuiAction.Kind.FILL_PERCENT, group, null, "", "80"));
+        }
+        for (final String number : new String[] { "x", "80%", "80.5", "", null,
+            "99999999999999999999999999999999999" }) {
+            assertEquals("invalid", this.apply(DriveGuiAction.Kind.FILL_PERCENT, 0, null, "", number));
+        }
+        assertEquals(0, this.context.mutations);
+        assertEquals(100, this.context.registry.getFillPercent(0));
+    }
+
     private static final class Context implements DriveGuiLogic.Context {
 
         final UUID session = UUID.randomUUID();
@@ -446,6 +491,12 @@ public class DriveGuiLogicTest {
         @Override
         public void setStoragePriority(int priority) {
             this.storagePriority = priority;
+            this.changed();
+        }
+
+        @Override
+        public void setFillPercent(int group, int percent) {
+            this.registry.setFillPercent(group, percent);
             this.changed();
         }
 
