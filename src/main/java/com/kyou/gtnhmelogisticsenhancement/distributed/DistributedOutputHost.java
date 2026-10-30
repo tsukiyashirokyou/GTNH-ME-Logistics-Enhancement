@@ -23,7 +23,8 @@ public interface DistributedOutputHost<K> extends IGridProxyable, IActionHost, I
 
     boolean canConfigure(EntityPlayer player);
 
-    boolean isItemValidForSlot(int slot, ItemStack card);
+    // Keep this facade distinct from IInventory methods, which are renamed during reobfuscation.
+    boolean acceptsCapacityCard(ItemStack card);
 
     void configurePartitions(int value);
 

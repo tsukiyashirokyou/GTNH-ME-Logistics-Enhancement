@@ -47,6 +47,7 @@ public class DistributedHatchIntegrationTest {
                 { "machineItemPreservesCardAndAllFluidStock" }, { "corruptNbtAndForeignSingleTankRemainEvidence" },
                 { "nodeAndBrokenInventoryEvidenceSurviveReload" }, { "realMuiPanelIsReadOnlyAndServerValidated" },
                 { "guiReusesIdentityIconsAndClearsEmptyPositions" },
+                { "capacityCardSlotUsesFluidPolicyAndLockedState" },
                 { "safeHatchRecipeRejectsPayloadsAndCreatesFreshOutput" }, { "fixedFluidIdConflictNeverOverwrites" },
                 { "realOrdinaryHatchAndDistributedHatchKeepSeparateTransactions" },
                 { "unrepresentableNbtNeverDispatchesAndDoesNotStarveOtherFluids" },

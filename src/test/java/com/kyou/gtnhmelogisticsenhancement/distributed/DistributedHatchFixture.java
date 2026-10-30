@@ -1257,6 +1257,21 @@ public class DistributedHatchFixture {
             () -> view.readOnServer(0, new net.minecraft.network.PacketBuffer(io.netty.buffer.Unpooled.buffer())));
     }
 
+    public void capacityCardSlotUsesFluidPolicyAndLockedState() {
+        final MTEDistributedMEOutputHatch hatch = hatch();
+        final com.cleanroommc.modularui.value.sync.PanelSyncManager sync = new com.cleanroommc.modularui.value.sync.PanelSyncManager(
+            new com.cleanroommc.modularui.value.sync.ModularSyncManager(true),
+            true);
+        final ItemStack itemCard = new ItemStack(
+            new appeng.items.storage.ItemBasicStorageCell(appeng.items.materials.MaterialType.Cell1kPart, 1));
+        DistributedBusFixture.assertCapacityCardSlot(
+            hatch,
+            hatch.buildUI(null, sync, new com.cleanroommc.modularui.screen.UISettings()),
+            card(),
+            itemCard,
+            new ItemStack(RECIPE_CARD));
+    }
+
     public void guiReusesIdentityIconsAndClearsEmptyPositions() throws Exception {
         final MTEDistributedMEOutputHatch hatch = hatch();
         hatch.configurePartitions(1);

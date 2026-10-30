@@ -138,9 +138,13 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
 
     @Override
     public boolean isItemValidForSlot(final int index, final ItemStack stack) {
-        return index == 0 && stack != null
-            && !this.state.locked()
-            && CellCapacityPolicy.inspect(stack)
+        return index == 0 && this.acceptsCapacityCard(stack);
+    }
+
+    @Override
+    public boolean acceptsCapacityCard(final ItemStack card) {
+        return card != null && !this.state.locked()
+            && CellCapacityPolicy.inspect(card)
                 .valid();
     }
 

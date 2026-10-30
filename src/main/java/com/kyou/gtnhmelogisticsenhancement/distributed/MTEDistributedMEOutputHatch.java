@@ -340,8 +340,12 @@ public class MTEDistributedMEOutputHatch extends MTEHatchOutput implements Distr
 
     @Override
     public boolean isItemValidForSlot(final int slot, final ItemStack card) {
-        return slot == 0 && card != null
-            && !this.state.locked()
+        return slot == 0 && this.acceptsCapacityCard(card);
+    }
+
+    @Override
+    public boolean acceptsCapacityCard(final ItemStack card) {
+        return card != null && !this.state.locked()
             && FluidCellCapacityPolicy.inspect(card)
                 .valid();
     }

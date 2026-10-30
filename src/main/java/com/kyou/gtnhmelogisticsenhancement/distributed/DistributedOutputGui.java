@@ -70,7 +70,7 @@ public final class DistributedOutputGui {
             @Override
             public boolean isItemValid(final ItemStack stack) {
                 return authorized(bus, sync) && !bus.state()
-                    .locked() && bus.isItemValidForSlot(0, stack) && super.isItemValid(stack);
+                    .locked() && bus.acceptsCapacityCard(stack) && super.isItemValid(stack);
             }
 
             @Override

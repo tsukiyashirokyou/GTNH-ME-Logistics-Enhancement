@@ -16,6 +16,14 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.common.util.ForgeDirection;
 
+import com.cleanroommc.modularui.api.widget.IWidget;
+import com.cleanroommc.modularui.screen.ModularPanel;
+import com.cleanroommc.modularui.screen.UISettings;
+import com.cleanroommc.modularui.value.sync.ModularSyncManager;
+import com.cleanroommc.modularui.value.sync.PanelSyncManager;
+import com.cleanroommc.modularui.widgets.slot.ItemSlot;
+import com.cleanroommc.modularui.widgets.slot.ModularSlot;
+
 import appeng.helpers.ICellRestriction;
 import appeng.items.storage.ItemAdvancedStorageCell;
 import appeng.items.storage.ItemBasicStorageCell;
@@ -732,6 +740,65 @@ public class DistributedBusFixture {
         assertThrows(
             java.io.IOException.class,
             () -> view.readOnServer(0, new net.minecraft.network.PacketBuffer(io.netty.buffer.Unpooled.buffer())));
+    }
+
+    public void capacityCardSlotUsesStableFacadeAndNativePolicies() {
+        // A facade redeclaration would remain unmapped while the MTE override is renamed in a release JAR.
+        assertThrows(
+            NoSuchMethodException.class,
+            () -> DistributedOutputHost.class.getDeclaredMethod("isItemValidForSlot", int.class, ItemStack.class));
+        final MTEDistributedMEOutputBus bus = bus();
+        final PanelSyncManager sync = new PanelSyncManager(new ModularSyncManager(true), true);
+        final ItemStack fluidCard = new ItemStack(
+            new com.glodblock.github.common.item.ItemBasicFluidStorageCell(
+                com.glodblock.github.common.storage.CellType.Cell1kPart,
+                0,
+                1));
+        assertCapacityCardSlot(bus, bus.buildUI(null, sync, new UISettings()), card(), fluidCard, item(0, 1));
+    }
+
+    static void assertCapacityCardSlot(final DistributedOutputHost<?> host, final ModularPanel panel,
+        final ItemStack valid, final ItemStack wrongType, final ItemStack ordinary) {
+        ModularSlot cardSlot = null;
+        final java.util.ArrayDeque<IWidget> pending = new java.util.ArrayDeque<>();
+        pending.add(panel);
+        while (!pending.isEmpty()) {
+            final IWidget widget = pending.removeFirst();
+            if (widget instanceof ItemSlot && ((ItemSlot) widget).isSynced()) {
+                final ModularSlot slot = ((ItemSlot) widget).getSlot();
+                if (slot.getItemHandler() == host.machine().inventoryHandler) {
+                    assertNull(cardSlot);
+                    cardSlot = slot;
+                }
+            }
+            pending.addAll(widget.getChildren());
+        }
+        assertNotNull(cardSlot);
+        assertTrue(host.acceptsCapacityCard(valid));
+        assertTrue(
+            host.machine()
+                .isItemValidForSlot(0, valid));
+        assertTrue(cardSlot.isItemValid(valid));
+        assertFalse(
+            host.machine()
+                .isItemValidForSlot(-1, valid));
+        assertFalse(
+            host.machine()
+                .isItemValidForSlot(1, valid));
+        for (final ItemStack invalid : new ItemStack[] { null, ordinary, wrongType }) {
+            assertFalse(host.acceptsCapacityCard(invalid));
+            assertFalse(
+                host.machine()
+                    .isItemValidForSlot(0, invalid));
+            assertFalse(cardSlot.isItemValid(invalid));
+        }
+        host.state()
+            .isolate("TEST_LOCKED");
+        assertFalse(host.acceptsCapacityCard(valid));
+        assertFalse(
+            host.machine()
+                .isItemValidForSlot(0, valid));
+        assertFalse(cardSlot.isItemValid(valid));
     }
 
     public void nativeFuzzyOreAndInverterPoliciesUseCopiedCards() {
