@@ -132,7 +132,8 @@ public final class DistributedOutputGui {
                 .pos(239, 94)
                 .child(
                     IKey.str("<")
-                        .asWidget())
+                        .asWidget()
+                        .center())
                 .syncHandler(
                     new InteractionSyncHandler()
                         .setOnMousePressed(mouse -> { if (authorized(bus, sync)) view.movePage(-1); })));
@@ -141,7 +142,8 @@ public final class DistributedOutputGui {
                 .pos(265, 94)
                 .child(
                     IKey.str(">")
-                        .asWidget())
+                        .asWidget()
+                        .center())
                 .syncHandler(
                     new InteractionSyncHandler()
                         .setOnMousePressed(mouse -> { if (authorized(bus, sync)) view.movePage(1); })));
@@ -163,10 +165,6 @@ public final class DistributedOutputGui {
                 .pos(8, 207)
                 .scale(0.7f)
                 .maxWidth(288));
-        panel.child(
-            IKey.dynamic(() -> view.text("statistics", view.calls, view.nanos))
-                .asWidget()
-                .pos(8, 220));
         return panel;
     }
 
@@ -225,8 +223,6 @@ public final class DistributedOutputGui {
         private String fault = "";
         private long capacity;
         private long quota;
-        private long calls;
-        private long nanos;
         private int partitions = 4;
         private int emergencyCount;
         private int page;
@@ -283,20 +279,13 @@ public final class DistributedOutputGui {
                 && this.active == active
                 && this.powered == powered
                 && this.booting == booting
-                && this.fault.equals(fault)
-                && this.calls == this.bus.state()
-                    .calls())
-                return;
+                && this.fault.equals(fault)) return;
             this.active = active;
             this.powered = powered;
             this.booting = booting;
             this.validCard = this.bus.state()
                 .validCard();
             this.fault = fault;
-            this.calls = this.bus.state()
-                .calls();
-            this.nanos = this.bus.state()
-                .nanoseconds();
             this.lastCache = store.cacheVersion();
             this.lastConfig = store.configurationVersion();
             this.partitions = store.partitions();
@@ -325,8 +314,6 @@ public final class DistributedOutputGui {
                 buffer.writeBoolean(this.powered);
                 buffer.writeBoolean(this.booting);
                 buffer.writeBoolean(this.validCard);
-                buffer.writeLong(this.calls);
-                buffer.writeLong(this.nanos);
                 for (int index = 0; index < 32; index++) {
                     DisplayIcon.write(buffer, this.icons[index], this.fluid);
                     buffer.writeLong(this.quantities[index]);
@@ -334,7 +321,7 @@ public final class DistributedOutputGui {
             });
         }
 
-        /** Fixed-size view reuse only. Quantity/statistics changes do not require recopying identity NBT. */
+        /** Fixed-size view reuse only. Quantity changes do not require recopying identity NBT. */
         private void refreshIcons(final PartitionStore<K> store) {
             Arrays.fill(this.quantities, 0);
             for (final PartitionStore.Entry<K> entry : store.normalEntries()) this.setIcon(entry.slot, entry);
@@ -371,8 +358,6 @@ public final class DistributedOutputGui {
             this.powered = buffer.readBoolean();
             this.booting = buffer.readBoolean();
             this.validCard = buffer.readBoolean();
-            this.calls = buffer.readLong();
-            this.nanos = buffer.readLong();
             for (int index = 0; index < 32; index++) {
                 this.icons[index] = DisplayIcon.read(buffer, this.fluid);
                 this.quantities[index] = buffer.readLong();

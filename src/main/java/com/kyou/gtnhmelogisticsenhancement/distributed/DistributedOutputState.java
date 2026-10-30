@@ -47,8 +47,6 @@ public class DistributedOutputState<K> {
     private String fault = "";
     private NBTBase quarantined;
     private NBTTagCompound flight;
-    private long calls;
-    private long nanoseconds;
 
     public PartitionStore<K> store() {
         return this.store;
@@ -71,14 +69,6 @@ public class DistributedOutputState<K> {
 
     public boolean roundActive() {
         return this.outputRound != null;
-    }
-
-    public long calls() {
-        return this.calls;
-    }
-
-    public long nanoseconds() {
-        return this.nanoseconds;
     }
 
     public String fault() {
@@ -178,14 +168,7 @@ public class DistributedOutputState<K> {
                 this.flight.setLong("offered", amount);
                 this.flight.setLong("cacheVersion", version);
                 markDirty.run();
-                final long start = System.nanoTime();
-                final Remainder<K> remaining;
-                this.calls = saturatingAdd(this.calls, 1);
-                try {
-                    remaining = destination.insert(identity, amount);
-                } finally {
-                    this.nanoseconds = saturatingAdd(this.nanoseconds, Math.max(0, System.nanoTime() - start));
-                }
+                final Remainder<K> remaining = destination.insert(identity, amount);
                 if (this.stopped || version != this.store.cacheVersion())
                     throw new IllegalStateException("LIFECYCLE_OR_STOCK_CHANGED");
                 final long left = remaining == null ? 0 : remaining.quantity;
@@ -212,10 +195,6 @@ public class DistributedOutputState<K> {
             }
         }
         return changed;
-    }
-
-    private static long saturatingAdd(final long value, final long addition) {
-        return addition > Long.MAX_VALUE - value ? Long.MAX_VALUE : value + addition;
     }
 
     public NBTTagCompound write() {

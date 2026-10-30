@@ -257,7 +257,7 @@ public class DistributedBusFixture {
                 .totalQuantity());
         final NBTTagCompound saved = state.write();
         System.out.println(
-            "Distributed bus synthetic 5000-type fixture: calls=" + state.calls()
+            "Distributed bus synthetic 5000-type fixture: identitiesVisited=" + visited.size()
                 + ", gzipNBTBytes="
                 + net.minecraft.nbt.CompressedStreamTools.compress(saved).length
                 + ", maxIdentitiesPerFlush=16; no Minecraft world/MSPT measurement");

@@ -103,7 +103,6 @@ public class DistributedOutputScheduleTest {
             } while (state.roundActive());
             assertEquals((size + 15) / 16, ticks);
             assertEquals(size, visited.size());
-            assertEquals(size, state.calls());
             assertEquals(
                 size * 100L,
                 state.store()
@@ -192,12 +191,19 @@ public class DistributedOutputScheduleTest {
         final DistributedOutputState<String> state = state();
         for (int i = 0; i < 17; i++) receive(state, "K" + i, 100);
         awaitStart(state);
-        state.flush((identity, amount) -> new DistributedOutputState.Remainder<>(identity, amount), () -> {});
+        final AtomicInteger calls = new AtomicInteger();
+        state.flush((identity, amount) -> {
+            calls.incrementAndGet();
+            return new DistributedOutputState.Remainder<>(identity, amount);
+        }, () -> {});
         state.setPeriod(DistributedOutputState.ticksFromSeconds(3));
         assertTrue(state.roundActive());
         assertTrue(state.tick());
-        state.flush((identity, amount) -> new DistributedOutputState.Remainder<>(identity, amount), () -> {});
-        assertEquals(17, state.calls());
+        state.flush((identity, amount) -> {
+            calls.incrementAndGet();
+            return new DistributedOutputState.Remainder<>(identity, amount);
+        }, () -> {});
+        assertEquals(17, calls.get());
         assertFalse(state.roundActive());
         for (int tick = 1; tick < 60; tick++) assertFalse(state.tick());
         assertTrue(state.tick());
@@ -257,10 +263,14 @@ public class DistributedOutputScheduleTest {
     public void uncertainDeliveryStillStopsTheRoundAndNeverReplaysOnReload() {
         final DistributedOutputState<String> state = state();
         for (int i = 0; i < 17; i++) receive(state, "K" + i, 100);
-        state.flush((identity, amount) -> { throw new IllegalStateException("unknown side effect"); }, () -> {});
+        final AtomicInteger calls = new AtomicInteger();
+        state.flush((identity, amount) -> {
+            calls.incrementAndGet();
+            throw new IllegalStateException("unknown side effect");
+        }, () -> {});
         assertTrue(state.locked());
         assertFalse(state.roundActive());
-        assertEquals(1, state.calls());
+        assertEquals(1, calls.get());
         final DistributedOutputState<String> restored = state();
         restored.readState(state.write(), null);
         assertTrue(restored.locked());

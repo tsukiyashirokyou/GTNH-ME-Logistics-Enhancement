@@ -1013,7 +1013,6 @@ public class DistributedHatchFixture {
             assertEquals(cycle == 312 ? 8 : 16, calls.get());
         }
         assertEquals(5000, visited.size());
-        assertEquals(5000, state.calls());
         final DistributedFluidHatchState restored = DistributedFluidHatchState.read(state.write(), null);
         assertEquals(
             BigInteger.valueOf(500000),
@@ -1463,8 +1462,6 @@ public class DistributedHatchFixture {
         buffer.writeBoolean(true);
         buffer.writeBoolean(false);
         buffer.writeBoolean(true);
-        buffer.writeLong(1);
-        buffer.writeLong(1);
         for (int slot = 0; slot < 32; slot++) {
             buffer.writeNBTTagCompoundToBuffer(slot == 0 ? fluid(7, 1).writeToNBT(new NBTTagCompound()) : null);
             buffer.writeLong(slot == 0 ? Long.MAX_VALUE : 0);
