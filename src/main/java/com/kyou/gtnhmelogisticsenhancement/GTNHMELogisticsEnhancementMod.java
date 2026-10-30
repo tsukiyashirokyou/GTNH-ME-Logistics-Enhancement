@@ -21,7 +21,7 @@ import cpw.mods.fml.common.event.FMLServerStoppedEvent;
     modid = GTNHMELogisticsEnhancementMod.MODID,
     version = Tags.VERSION,
     name = GTNHMELogisticsEnhancementMod.MODNAME,
-    dependencies = "required-after:appliedenergistics2",
+    dependencies = "required-after:appliedenergistics2;required-after:gregtech;required-after:modularui2",
     acceptedMinecraftVersions = "[1.7.10]")
 public class GTNHMELogisticsEnhancementMod {
 

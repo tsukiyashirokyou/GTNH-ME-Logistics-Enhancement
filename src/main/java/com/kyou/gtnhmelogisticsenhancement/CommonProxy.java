@@ -3,6 +3,7 @@ package com.kyou.gtnhmelogisticsenhancement;
 import net.minecraft.entity.player.EntityPlayer;
 
 import com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive;
+import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedBusRegistration;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiHandler;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemNetworkBindingTool;
@@ -33,6 +34,7 @@ public class CommonProxy {
     }
 
     public void init(FMLInitializationEvent event) {
+        DistributedBusRegistration.register();
         TransferScheduler.init();
         DriveGuiNetwork.init();
         NetworkRegistry.INSTANCE.registerGuiHandler(GTNHMELogisticsEnhancementMod.instance, new DriveGuiHandler());
@@ -46,6 +48,7 @@ public class CommonProxy {
 
     public void postInit(FMLPostInitializationEvent event) {
         RecipeLoader.register();
+        DistributedBusRegistration.registerRecipe();
     }
 
     public void serverStarting(FMLServerStartingEvent event) {}

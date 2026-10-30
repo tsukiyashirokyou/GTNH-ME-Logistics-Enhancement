@@ -25,6 +25,9 @@ public final class PartitionStore<K> {
     private int occupied;
     private int emergencyCount;
     private int partitions;
+    private int typeLimit = MAX_PARTITIONS;
+    private BigInteger total = BigInteger.ZERO;
+    private BigInteger emergencyTotal = BigInteger.ZERO;
     private long capacity;
     private long configurationVersion;
     private long cacheVersion;
@@ -50,7 +53,12 @@ public final class PartitionStore<K> {
     }
 
     public long quota() {
-        return this.capacity / this.partitions;
+        final int effective = this.effectivePartitions();
+        return effective == 0 ? 0 : this.capacity / effective;
+    }
+
+    public int effectivePartitions() {
+        return Math.min(this.partitions, this.typeLimit);
     }
 
     public long configurationVersion() {
@@ -75,6 +83,10 @@ public final class PartitionStore<K> {
 
     public boolean hasEmergencyStock() {
         return this.emergencyCount != 0;
+    }
+
+    public BigInteger emergencyQuantity() {
+        return this.emergencyTotal;
     }
 
     public Failure<K> failure() {
@@ -117,10 +129,64 @@ public final class PartitionStore<K> {
         return Collections.unmodifiableList(result);
     }
 
+    /** Stable identity-only work list; no live iterator or duplicate quantities are retained across ticks. */
+    List<K> outputSnapshot() {
+        return new ArrayList<>(this.index.keySet());
+    }
+
+    /** Persist fairness after each visited identity, including refused identities, without changing stock. */
+    void advanceOutputCursor(final K identity) {
+        final Entry<K> entry = this.index.remove(identity);
+        if (entry != null) this.index.put(identity, entry);
+    }
+
     public BigInteger totalQuantity() {
-        BigInteger total = BigInteger.ZERO;
-        for (final Entry<K> entry : this.index.values()) total = total.add(BigInteger.valueOf(entry.quantity));
-        return total;
+        return this.total;
+    }
+
+    /** Persist only one next-identity cursor, never a duplicate inventory list. */
+    public K outputCursor() {
+        return this.index.isEmpty() ? null
+            : this.index.values()
+                .iterator()
+                .next().identity;
+    }
+
+    /** Load-time O(identities) positioning; no handler calls or inventory mutations. */
+    public void restoreOutputCursor(final K identity) {
+        if (!this.index.containsKey(identity)) return;
+        for (int step = 0, size = this.index.size(); step < size; step++) {
+            final Entry<K> entry = this.index.values()
+                .iterator()
+                .next();
+            if (entry.identity.equals(identity)) return;
+            this.index.remove(entry.identity);
+            this.index.put(entry.identity, entry);
+        }
+    }
+
+    /** Runtime capacity-card limit; existing and protected stock is never trimmed. */
+    public void setTypeLimit(final int limit) {
+        if (limit < 0 || limit > MAX_PARTITIONS) throw new IllegalArgumentException("Invalid type limit");
+        if (this.typeLimit == limit) return;
+        final long next = Math.incrementExact(this.configurationVersion);
+        this.typeLimit = limit;
+        this.configurationVersion = next;
+    }
+
+    /** Diagnostic page only. Never used in the input or periodic output hot path. */
+    public List<Entry<K>> emergencyPage(final int offset, final int maximum) {
+        if (offset < 0 || maximum < 1 || maximum > MAX_PARTITIONS) throw new IllegalArgumentException("Invalid page");
+        final List<Entry<K>> result = new ArrayList<>(maximum);
+        int skipped = 0;
+        for (final Entry<K> entry : this.normalEntries()) {
+            if (entry.emergency && skipped++ >= offset) result.add(entry);
+        }
+        for (final Entry<K> entry : this.overflow.values()) {
+            if (result.size() >= maximum) break;
+            if (skipped++ >= offset) result.add(entry);
+        }
+        return Collections.unmodifiableList(result.subList(0, Math.min(maximum, result.size())));
     }
 
     /** Shrink without clipping stock. Only admission and normal-position promotion change. */
@@ -151,6 +217,8 @@ public final class PartitionStore<K> {
         final long next = Math.incrementExact(this.cacheVersion);
         if (amount == entry.quantity) {
             this.index.remove(identity);
+            this.total = this.total.subtract(BigInteger.valueOf(amount));
+            if (entry.emergency) this.emergencyTotal = this.emergencyTotal.subtract(BigInteger.valueOf(amount));
             if (entry.emergency) this.emergencyCount--;
             if (entry.slot >= 0) {
                 this.slots.set(entry.slot, null);
@@ -181,6 +249,10 @@ public final class PartitionStore<K> {
 
     private void put(final Entry<K> entry) {
         final Entry<K> previous = this.index.put(entry.identity, entry);
+        this.total = this.total.add(BigInteger.valueOf(entry.quantity - (previous == null ? 0 : previous.quantity)));
+        if (previous != null && previous.emergency)
+            this.emergencyTotal = this.emergencyTotal.subtract(BigInteger.valueOf(previous.quantity));
+        if (entry.emergency) this.emergencyTotal = this.emergencyTotal.add(BigInteger.valueOf(entry.quantity));
         if (previous != null && previous.emergency) this.emergencyCount--;
         if (entry.emergency) this.emergencyCount++;
         if (previous != null && previous.slot < 0 && entry.slot >= 0) this.overflow.remove(entry.identity);
@@ -421,7 +493,7 @@ public final class PartitionStore<K> {
             private final long configuration = PartitionStore.this.configurationVersion;
             private final long version = PartitionStore.this.cacheVersion;
             private final long quota = PartitionStore.this.quota();
-            private final int limit = PartitionStore.this.partitions;
+            private final int limit = PartitionStore.this.effectivePartitions();
             private final int identityCount = PartitionStore.this.index.size();
             private final Predicate<? super K> admissionFilter = PartitionStore.this.filter;
             private final Map<K, Entry<K>> observed = new HashMap<>();

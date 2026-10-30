@@ -15,6 +15,32 @@ import org.junit.Test;
 public class PartitionStoreTest {
 
     @Test
+    public void effectivePartitionsShareQuotaWithoutZeroDivisionOrOverflow() {
+        final PartitionStore<String> store = new PartitionStore<>(4, 2080768);
+        store.setTypeLimit(1);
+        assertEquals(1, store.effectivePartitions());
+        assertEquals(2080768, store.quota());
+        store.setTypeLimit(5);
+        store.configure(4, 2031616);
+        assertEquals(4, store.effectivePartitions());
+        assertEquals(507904, store.quota());
+        store.configure(16, 2015232);
+        assertEquals(5, store.effectivePartitions());
+        assertEquals(403046, store.quota());
+        store.configure(16, Long.MAX_VALUE);
+        assertEquals(Long.MAX_VALUE / 5, store.quota());
+        store.setTypeLimit(0);
+        assertEquals(0, store.quota());
+        assertFalse(
+            store.transaction()
+                .offer("invalid", 1));
+        final PartitionStore<String>.Transaction protectedOutput = store.transaction(true);
+        assertTrue(protectedOutput.offer("retained", 100));
+        protectedOutput.commit();
+        assertEquals(100, store.quantity("retained"));
+    }
+
+    @Test
     public void defaultsAndAllPartitionCountsHaveIndependentQuotas() {
         assertEquals(400, new PartitionStore<String>(PartitionStore.ITEM_CAPACITY).quota());
         assertEquals(32000, new PartitionStore<String>(PartitionStore.FLUID_CAPACITY).quota());
