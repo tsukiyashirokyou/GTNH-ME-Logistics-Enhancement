@@ -4,6 +4,7 @@ import net.minecraft.entity.player.EntityPlayer;
 
 import com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedBusRegistration;
+import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiHandler;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemNetworkBindingTool;
@@ -35,6 +36,7 @@ public class CommonProxy {
 
     public void init(FMLInitializationEvent event) {
         DistributedBusRegistration.register();
+        DistributedOutputEnergy.init();
         TransferScheduler.init();
         DriveGuiNetwork.init();
         NetworkRegistry.INSTANCE.registerGuiHandler(GTNHMELogisticsEnhancementMod.instance, new DriveGuiHandler());

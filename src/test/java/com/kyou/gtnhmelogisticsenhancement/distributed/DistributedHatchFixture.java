@@ -663,6 +663,225 @@ public class DistributedHatchFixture {
             });
     }
 
+    private static final class GridPower {
+
+        double stored = 1000, spent;
+        int simulations;
+        Runnable duringSimulation;
+
+        final appeng.api.networking.energy.IEnergyGrid grid = (appeng.api.networking.energy.IEnergyGrid) java.lang.reflect.Proxy
+            .newProxyInstance(
+                DistributedHatchFixture.class.getClassLoader(),
+                new Class<?>[] { appeng.api.networking.energy.IEnergyGrid.class },
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getStoredPower":
+                            return this.stored;
+                        case "getMaxStoredPower":
+                            return 1000.0;
+                        case "getIdlePowerUsage":
+                            return 0.0;
+                        case "getHasInfiniteStore":
+                            return false;
+                        case "extractAEPower":
+                            if (args[1] == Actionable.SIMULATE) {
+                                this.simulations++;
+                                if (this.duringSimulation != null) this.duringSimulation.run();
+                            }
+                            final appeng.api.config.PowerMultiplier multiplier = (appeng.api.config.PowerMultiplier) args[2];
+                            final double physical = Math.min(this.stored, multiplier.multiply((Double) args[0]));
+                            if (args[1] == Actionable.MODULATE) {
+                                this.stored -= physical;
+                                this.spent += physical;
+                            }
+                            return multiplier.divide(physical);
+                        default:
+                            throw new AssertionError("Unexpected energy call: " + method);
+                    }
+                });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends appeng.api.storage.data.IAEStack<T>> appeng.api.storage.IMEInventory<T> energyDestination(
+        final appeng.api.storage.data.IAEStackType<T> type, final java.util.function.Function<T, T> receive) {
+        return (appeng.api.storage.IMEInventory<T>) java.lang.reflect.Proxy.newProxyInstance(
+            DistributedHatchFixture.class.getClassLoader(),
+            new Class<?>[] { appeng.api.storage.IMEInventory.class },
+            (proxy, method, args) -> {
+                if (method.getName()
+                    .equals("injectItems")) return receive.apply((T) args[0]);
+                if (method.getName()
+                    .equals("getStackType")) return type;
+                throw new AssertionError("Unexpected inventory call: " + method);
+            });
+    }
+
+    public void distributedEnergySharesBudgetBetweenItemsAndFluids() {
+        DistributedOutputEnergy.clear();
+        final Object shared = new Object();
+        final GridPower power = new GridPower();
+        final appeng.api.networking.security.MachineSource source = new appeng.api.networking.security.MachineSource(
+            hatch());
+        final appeng.api.storage.data.IAEItemStack items = appeng.util.item.AEItemStack
+            .create(new ItemStack(RECIPE_HATCH))
+            .setStackSize(Integer.MAX_VALUE);
+        final appeng.api.storage.data.IAEItemStack itemLeft = DistributedOutputEnergy.insert(
+            shared,
+            power.grid,
+            () -> true,
+            energyDestination(appeng.util.item.AEItemStackType.ITEM_STACK_TYPE, input -> {
+                assertEquals(100, input.getStackSize());
+                return null;
+            }),
+            items,
+            appeng.util.item.AEItemStackType.ITEM_STACK_TYPE,
+            source);
+        assertEquals(Integer.MAX_VALUE - 100L, itemLeft.getStackSize());
+        final IAEFluidStack fluids = AEFluidStack.create(new FluidStack(FLUID, 1000000));
+        final IAEFluidStack fluidLeft = DistributedOutputEnergy
+            .insert(shared, power.grid, () -> true, energyDestination(FLUID_STACK_TYPE, input -> {
+                fail("Shared quota already spent");
+                return null;
+            }), fluids, FLUID_STACK_TYPE, source);
+        assertEquals(1000000, fluidLeft.getStackSize());
+        assertEquals(100, power.spent, 0);
+        assertEquals(900, power.stored, 0);
+    }
+
+    public void distributedEnergyChargesActualReceiptsAndPreservesStock() {
+        final double previousMultiplier = appeng.api.config.PowerMultiplier.CONFIG.multiply(1);
+        try {
+            for (final double multiplier : new double[] { 1, 2.5 }) {
+                appeng.api.config.PowerMultiplier.CONFIG.multiplier = multiplier;
+                final long authorized = (long) (100 / multiplier) * 1000;
+                for (final long accepted : new long[] { 0, 1501, authorized }) {
+                    DistributedOutputEnergy.clear();
+                    final GridPower power = new GridPower();
+                    final Object shared = new Object();
+                    final DistributedFluidHatchState state = new DistributedFluidHatchState();
+                    receive(state, 0, 1000000);
+                    final appeng.api.storage.IMEInventory<IAEFluidStack> monitor = energyDestination(
+                        FLUID_STACK_TYPE,
+                        input -> {
+                            assertEquals(authorized, input.getStackSize());
+                            return accepted == authorized ? null
+                                : input.copy()
+                                    .setStackSize(authorized - accepted);
+                        });
+                    state.flush((identity, amount) -> {
+                        final IAEFluidStack result = DistributedOutputEnergy.insert(
+                            shared,
+                            power.grid,
+                            () -> true,
+                            monitor,
+                            AEFluidStack.create(new FluidStack(FLUID, amount)),
+                            FLUID_STACK_TYPE,
+                            new appeng.api.networking.security.MachineSource(hatch()));
+                        return result == null ? null
+                            : new DistributedOutputState.Remainder<>(identity, result.getStackSize());
+                    }, () -> {});
+                    assertEquals(
+                        1000000 - accepted,
+                        state.store()
+                            .quantity(id(0)));
+                    assertEquals(((accepted + 999) / 1000) * multiplier, power.spent, 0);
+                    assertFalse(state.locked());
+                    assertNotNull(
+                        DistributedOutputEnergy
+                            .insert(shared, power.grid, () -> true, energyDestination(FLUID_STACK_TYPE, input -> {
+                                fail("No gross-quota recycling");
+                                return null;
+                            }),
+                                AEFluidStack.create(new FluidStack(FLUID, 1000000)),
+                                FLUID_STACK_TYPE,
+                                new appeng.api.networking.security.MachineSource(hatch())));
+                }
+            }
+        } finally {
+            appeng.api.config.PowerMultiplier.CONFIG.multiplier = previousMultiplier;
+            DistributedOutputEnergy.clear();
+        }
+    }
+
+    public void distributedEnergyChecksTopologyAndSynchronousReentry() {
+        DistributedOutputEnergy.clear();
+        final GridPower power = new GridPower();
+        final Object shared = new Object();
+        final boolean[] valid = { true };
+        power.duringSimulation = () -> { if (power.simulations == 2) valid[0] = false; };
+        final IAEFluidStack offered = AEFluidStack.create(new FluidStack(FLUID, 1000000));
+        final appeng.api.networking.security.MachineSource source = new appeng.api.networking.security.MachineSource(
+            hatch());
+        final IAEFluidStack left = DistributedOutputEnergy
+            .insert(shared, power.grid, () -> valid[0], energyDestination(FLUID_STACK_TYPE, input -> {
+                fail("Grid changed during native SIM");
+                return null;
+            }), offered, FLUID_STACK_TYPE, source);
+        assertEquals(1000000, left.getStackSize());
+        assertEquals(0, power.spent, 0);
+        DistributedOutputEnergy.clear();
+        power.duringSimulation = null;
+        DistributedOutputEnergy.insert(shared, power.grid, () -> true, energyDestination(FLUID_STACK_TYPE, input -> {
+            final IAEFluidStack nested = DistributedOutputEnergy
+                .insert(shared, power.grid, () -> true, energyDestination(FLUID_STACK_TYPE, ignored -> {
+                    fail("Reentry exceeded quota");
+                    return null;
+                }), offered, FLUID_STACK_TYPE, source);
+            assertEquals(offered.getStackSize(), nested.getStackSize());
+            return null;
+        }), offered, FLUID_STACK_TYPE, source);
+        assertEquals(100, power.spent, 0);
+    }
+
+    public void distributedEnergyRenewsOnServerTickAndRetainsUncertainFlight() {
+        DistributedOutputEnergy.clear();
+        final GridPower power = new GridPower();
+        final Object shared = new Object();
+        final IAEFluidStack offered = AEFluidStack.create(new FluidStack(FLUID, 1000000));
+        final appeng.api.networking.security.MachineSource source = new appeng.api.networking.security.MachineSource(
+            hatch());
+        DistributedOutputEnergy.insert(
+            shared,
+            power.grid,
+            () -> true,
+            energyDestination(FLUID_STACK_TYPE, input -> null),
+            offered,
+            FLUID_STACK_TYPE,
+            source);
+        final DistributedOutputEnergy.ServerTicks ticks = new DistributedOutputEnergy.ServerTicks();
+        ticks.tick(
+            new cpw.mods.fml.common.gameevent.TickEvent.ServerTickEvent(
+                cpw.mods.fml.common.gameevent.TickEvent.Phase.START));
+        DistributedOutputEnergy.insert(shared, power.grid, () -> true, energyDestination(FLUID_STACK_TYPE, input -> {
+            assertEquals(90000, input.getStackSize());
+            return null;
+        }), offered, FLUID_STACK_TYPE, source);
+        assertEquals(190, power.spent, 0);
+        DistributedOutputEnergy.clear();
+        final DistributedFluidHatchState state = new DistributedFluidHatchState();
+        receive(state, 0, 1000000);
+        state.flush((identity, amount) -> {
+            DistributedOutputEnergy.insert(
+                shared,
+                power.grid,
+                () -> true,
+                energyDestination(FLUID_STACK_TYPE, input -> { throw new IllegalStateException("Unknown delivery"); }),
+                offered,
+                FLUID_STACK_TYPE,
+                source);
+            fail("Must propagate unknown result to flight isolation");
+            return null;
+        }, () -> {});
+        assertTrue(state.locked());
+        assertTrue(
+            DistributedFluidHatchState.read(state.write(), null)
+                .locked());
+        assertEquals(
+            1000000,
+            state.store()
+                .quantity(id(0)));
+    }
+
     public void nativePoweredInsertUsesFluidEnergyUnits() {
         for (final int available : new int[] { 0, 2, 100 }) for (final int capacity : new int[] { 0, 1501, 100000 }) {
             final double[] spent = { 0 };
@@ -1036,6 +1255,68 @@ public class DistributedHatchFixture {
         assertThrows(
             java.io.IOException.class,
             () -> view.readOnServer(0, new net.minecraft.network.PacketBuffer(io.netty.buffer.Unpooled.buffer())));
+    }
+
+    public void guiReusesIdentityIconsAndClearsEmptyPositions() throws Exception {
+        final MTEDistributedMEOutputHatch hatch = hatch();
+        hatch.configurePartitions(1);
+        receive(hatch.state(), 0, 100);
+        receive(hatch.state(), 1, 200);
+        final com.cleanroommc.modularui.value.sync.PanelSyncManager sync = new com.cleanroommc.modularui.value.sync.PanelSyncManager(
+            new com.cleanroommc.modularui.value.sync.ModularSyncManager(false),
+            true);
+        final AtomicInteger copies = new AtomicInteger();
+        DistributedOutputGui
+            .build(hatch, null, sync, new com.cleanroommc.modularui.screen.UISettings(), true, identity -> {
+                copies.incrementAndGet();
+                return DistributedOutputGui.DisplayIcon.fluid(identity.getFluidStack());
+            });
+        final Object view = sync.findSyncHandlerNullable("busView", 0);
+        final java.lang.reflect.Method refresh = view.getClass()
+            .getDeclaredMethod("refreshIcons", PartitionStore.class);
+        refresh.setAccessible(true);
+        final java.lang.reflect.Field iconsField = view.getClass()
+            .getDeclaredField("icons");
+        final java.lang.reflect.Field identitiesField = view.getClass()
+            .getDeclaredField("iconIdentities");
+        final java.lang.reflect.Field quantitiesField = view.getClass()
+            .getDeclaredField("quantities");
+        iconsField.setAccessible(true);
+        identitiesField.setAccessible(true);
+        quantitiesField.setAccessible(true);
+        final Object[] icons = (Object[]) iconsField.get(view);
+        final Object[] identities = (Object[]) identitiesField.get(view);
+        final long[] quantities = (long[]) quantitiesField.get(view);
+        final PartitionStore<FluidId> store = hatch.state()
+            .store();
+        refresh.invoke(view, store);
+        assertEquals(2, copies.get());
+        final Object normalIcon = icons[0], emergencyIcon = icons[16];
+        for (int update = 0; update < 10; update++) {
+            receive(hatch.state(), 0, 1);
+            refresh.invoke(view, store);
+            assertSame(normalIcon, icons[0]);
+            assertSame(emergencyIcon, icons[16]);
+            assertEquals(101 + update, quantities[0]);
+        }
+        assertEquals(2, copies.get());
+        store.remove(id(0), 110);
+        refresh.invoke(view, store);
+        assertEquals(3, copies.get());
+        assertEquals(200, quantities[0]);
+        assertNull(icons[16]);
+        assertNull(identities[16]);
+        store.remove(id(1), 200);
+        refresh.invoke(view, store);
+        for (int position = 0; position < 32; position++) {
+            assertNull(icons[position]);
+            assertNull(identities[position]);
+            assertEquals(0, quantities[position]);
+        }
+        receive(hatch.state(), 1, 1);
+        refresh.invoke(view, store);
+        assertEquals(4, copies.get());
+        assertEquals(1, quantities[0]);
     }
 
     public void safeHatchRecipeRejectsPayloadsAndCreatesFreshOutput() {

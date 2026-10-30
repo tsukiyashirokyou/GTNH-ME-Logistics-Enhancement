@@ -215,6 +215,7 @@ public final class DistributedOutputGui {
         private final DistributedOutputHost<K> bus;
         private final PanelSyncManager panel;
         private final DisplayIcon[] icons = new DisplayIcon[32];
+        private final Object[] iconIdentities = new Object[32];
         private final Function<K, DisplayIcon> iconsFactory;
         private final boolean fluid;
         private final String prefix;
@@ -308,11 +309,7 @@ public final class DistributedOutputGui {
             this.emergencyCount = store.emergencyIdentityCount();
             this.pages = Math.max(1, (this.emergencyCount - 1) / 16 + 1);
             this.page = Math.min(this.page, this.pages - 1);
-            Arrays.fill(this.icons, null);
-            Arrays.fill(this.quantities, 0);
-            for (final PartitionStore.Entry<K> entry : store.normalEntries()) this.setIcon(entry.slot, entry);
-            final List<PartitionStore.Entry<K>> emergency = store.emergencyPage(this.page * 16, 16);
-            for (int index = 0; index < emergency.size(); index++) this.setIcon(16 + index, emergency.get(index));
+            this.refreshIcons(store);
             this.force = false;
             this.syncToClient(0, buffer -> {
                 buffer.writeInt(this.partitions);
@@ -337,8 +334,25 @@ public final class DistributedOutputGui {
             });
         }
 
+        /** Fixed-size view reuse only. Quantity/statistics changes do not require recopying identity NBT. */
+        private void refreshIcons(final PartitionStore<K> store) {
+            Arrays.fill(this.quantities, 0);
+            for (final PartitionStore.Entry<K> entry : store.normalEntries()) this.setIcon(entry.slot, entry);
+            final List<PartitionStore.Entry<K>> emergency = store.emergencyPage(this.page * 16, 16);
+            for (int index = 0; index < emergency.size(); index++) this.setIcon(16 + index, emergency.get(index));
+            for (int index = 0; index < this.icons.length; index++) {
+                if (this.quantities[index] == 0) {
+                    this.icons[index] = null;
+                    this.iconIdentities[index] = null;
+                }
+            }
+        }
+
         private void setIcon(final int index, final PartitionStore.Entry<K> entry) {
-            this.icons[index] = this.iconsFactory.apply(entry.identity);
+            if (!entry.identity.equals(this.iconIdentities[index])) {
+                this.icons[index] = this.iconsFactory.apply(entry.identity);
+                this.iconIdentities[index] = entry.identity;
+            }
             this.quantities[index] = entry.quantity;
         }
 

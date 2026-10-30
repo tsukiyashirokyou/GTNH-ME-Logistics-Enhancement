@@ -166,7 +166,8 @@ public class DistributedOutputState<K> {
         try {
             for (int visited = 0; visited < OUTPUT_BUDGET && this.roundPosition < this.outputRound.size(); visited++) {
                 if (this.stopped || !this.fault.isEmpty()) break;
-                final K identity = this.outputRound.get(this.roundPosition++);
+                // Completed positions are never read again; do not retain drained identities/NBT until round end.
+                final K identity = this.outputRound.set(this.roundPosition++, null);
                 this.store.advanceOutputCursor(identity);
                 final long known = this.store.quantity(identity);
                 if (known <= 0) continue;

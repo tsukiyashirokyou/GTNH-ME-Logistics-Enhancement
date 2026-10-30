@@ -54,6 +54,7 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
     private AENetworkProxy proxy;
     private NBTTagCompound networkData;
     private NBTBase cardEvidence;
+    private NBTBase nodeEvidence;
     private boolean allSides;
     private boolean savedProxy;
     private boolean ready;
@@ -198,9 +199,11 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
             || player.getDistanceSq(base.getXCoord() + 0.5, base.getYCoord() + 0.5, base.getZCoord() + 0.5) > 64
             || !base.isUseableByPlayer(player)) return false;
         if (base.isClientSide()) return true;
+        final AENetworkProxy current = this.getProxy();
+        if (!current.isActive()) return player.getUniqueID()
+            .equals(base.getOwnerUuid());
         try {
-            return this.getProxy()
-                .getSecurity()
+            return current.getSecurity()
                 .hasPermission(player, SecurityPermissions.BUILD);
         } catch (GridAccessException offline) {
             return player.getUniqueID()
@@ -420,6 +423,7 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
                 "distributedAE",
                 this.networkData.getTag("distributedAE")
                     .copy());
+        if (this.nodeEvidence != null) tag.setTag("distributedAE", this.nodeEvidence.copy());
     }
 
     @Override
@@ -450,8 +454,13 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
             if (!valid) this.cardEvidence = raw.copy();
         }
         if (this.cardEvidence != null) this.state.isolate("INVALID_CARD_INVENTORY");
+        this.nodeEvidence = tag.hasKey("distributedAE") && !tag.hasKey("distributedAE", 10)
+            ? tag.getTag("distributedAE")
+                .copy()
+            : null;
+        if (this.nodeEvidence != null) this.state.isolate("INVALID_AE_NODE");
         this.allSides = tag.getBoolean("distributedAllSides");
-        this.savedProxy = tag.hasKey("distributedAE");
+        this.savedProxy = tag.hasKey("distributedAE", 10);
         this.networkData = new NBTTagCompound();
         if (this.savedProxy) this.networkData.setTag(
             "distributedAE",

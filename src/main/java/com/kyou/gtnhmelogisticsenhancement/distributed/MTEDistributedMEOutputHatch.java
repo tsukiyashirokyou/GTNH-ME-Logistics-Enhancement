@@ -304,9 +304,11 @@ public class MTEDistributedMEOutputHatch extends MTEHatchOutput implements Distr
             || player.getDistanceSq(base.getXCoord() + 0.5, base.getYCoord() + 0.5, base.getZCoord() + 0.5) > 64
             || !base.isUseableByPlayer(player)) return false;
         if (base.isClientSide()) return true;
+        final AENetworkProxy current = this.getProxy();
+        if (!current.isActive()) return player.getUniqueID()
+            .equals(base.getOwnerUuid());
         try {
-            return this.getProxy()
-                .getSecurity()
+            return current.getSecurity()
                 .hasPermission(player, SecurityPermissions.BUILD);
         } catch (GridAccessException offline) {
             return player.getUniqueID()

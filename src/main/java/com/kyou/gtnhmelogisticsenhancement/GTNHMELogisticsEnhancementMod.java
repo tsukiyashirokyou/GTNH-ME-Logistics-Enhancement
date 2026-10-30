@@ -6,6 +6,7 @@ import net.minecraft.item.Item;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferScheduler;
 
@@ -62,6 +63,7 @@ public class GTNHMELogisticsEnhancementMod {
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
         TransferScheduler.clear();
+        DistributedOutputEnergy.clear();
         DriveGuiNetwork.clearServerQueue();
     }
 }

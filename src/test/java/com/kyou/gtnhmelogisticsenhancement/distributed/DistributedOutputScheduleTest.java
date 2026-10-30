@@ -54,6 +54,35 @@ public class DistributedOutputScheduleTest {
     }
 
     @Test
+    public void visitedSnapshotPositionsReleaseDrainedIdentitiesBeforeRoundEnd() throws Exception {
+        final DistributedOutputState<String> state = state();
+        for (int i = 0; i < 17; i++) receive(state, "K" + i, 100);
+        state.flush((identity, amount) -> null, () -> {});
+        assertTrue(state.roundActive());
+        final java.lang.reflect.Field field = DistributedOutputState.class.getDeclaredField("outputRound");
+        field.setAccessible(true);
+        final java.util.List<?> snapshot = (java.util.List<?>) field.get(state);
+        assertEquals(17, snapshot.size());
+        for (int i = 0; i < 16; i++) assertNull(snapshot.get(i));
+        assertEquals("K16", snapshot.get(16));
+        assertEquals(
+            1,
+            state.store()
+                .identityCount());
+        assertTrue(state.tick());
+        state.flush((identity, amount) -> {
+            assertEquals("K16", identity);
+            return null;
+        }, () -> {});
+        assertFalse(state.roundActive());
+        assertEquals(
+            0,
+            state.store()
+                .identityCount());
+        assertNull(field.get(state));
+    }
+
+    @Test
     public void allRoundSizesVisitEachIdentityOnceWithSixteenPerTick() {
         for (final int size : new int[] { 1, 16, 17, 32, 5000 }) {
             final DistributedOutputState<String> state = state();

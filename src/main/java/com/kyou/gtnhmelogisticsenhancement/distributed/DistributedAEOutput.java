@@ -7,6 +7,8 @@ import net.minecraft.nbt.NBTTagCompound;
 import com.mojang.authlib.GameProfile;
 
 import appeng.api.networking.GridFlags;
+import appeng.api.networking.IGrid;
+import appeng.api.networking.energy.IEnergyGrid;
 import appeng.api.networking.security.BaseActionSource;
 import appeng.api.storage.IMEMonitor;
 import appeng.api.storage.data.IAEStack;
@@ -15,7 +17,6 @@ import appeng.core.worlddata.WorldData;
 import appeng.me.GridAccessException;
 import appeng.me.helpers.AENetworkProxy;
 import appeng.me.helpers.IGridProxyable;
-import appeng.util.Platform;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
 
@@ -54,15 +55,24 @@ final class DistributedAEOutput {
         if (!proxy.isActive()) return offered;
         try {
             // Resolve before each identity, allowing synchronous callbacks to split/merge the Grid.
+            final IGrid grid = proxy.getGrid();
             final appeng.api.networking.storage.IStorageGrid storage = proxy.getStorage();
-            final appeng.api.networking.energy.IEnergyGrid energy = proxy.getEnergy();
+            final IEnergyGrid energy = proxy.getEnergy();
             final IMEMonitor<?> raw = storage.getMEMonitor(type);
             if (raw == null || raw.getStackType() != type)
                 throw new IllegalStateException("Unexpected AE monitor type");
             // AE's wildcard API is narrowed only after checking its registered storage type.
             @SuppressWarnings("unchecked")
             final IMEMonitor<T> monitor = (IMEMonitor<T>) raw;
-            return Platform.poweredInsert(energy, new CheckedStorageDestination<>(monitor, type), offered, source);
+            return DistributedOutputEnergy.insert(grid, energy, () -> {
+                try {
+                    return proxy.isActive() && proxy.getGrid() == grid
+                        && proxy.getEnergy() == energy
+                        && proxy.getStorage() == storage;
+                } catch (GridAccessException offline) {
+                    return false;
+                }
+            }, monitor, offered, type, source);
         } catch (GridAccessException offline) {
             return offered; // No injection has started.
         }
