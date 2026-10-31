@@ -142,16 +142,16 @@ public class DistributedBusFixture {
             second.state()
                 .output());
         assertEquals(1, first.getRealInventory().length);
-        first.configurePartitions(1);
+        first.configurePartitions(2);
         actual(first, 0, 350);
-        actual(first, 1, 1000);
+        actual(first, 1, 650);
         assertEquals(
             350,
             first.state()
                 .store()
                 .quantity(id(0)));
         assertEquals(
-            1000,
+            650,
             first.state()
                 .store()
                 .quantity(id(1)));
@@ -337,6 +337,7 @@ public class DistributedBusFixture {
     }
 
     private static ItemBasicStorageCell registeredCell;
+    private static ItemBasicStorageCell registered64kCell;
 
     private static ItemStack card() {
         if (registeredCell != null) return new ItemStack(registeredCell);
@@ -344,6 +345,184 @@ public class DistributedBusFixture {
         Item.itemRegistry.addObject(31020, "gtnhmelogisticsenhancement:capacity_test", item);
         registeredCell = item;
         return new ItemStack(item);
+    }
+
+    private static ItemStack card64k() {
+        if (registered64kCell == null) {
+            registered64kCell = new ItemBasicStorageCell(appeng.items.materials.MaterialType.Cell64kPart, 64);
+            Item.itemRegistry.addObject(31022, "gtnhmelogisticsenhancement:capacity_64k_test", registered64kCell);
+        }
+        return new ItemStack(registered64kCell);
+    }
+
+    private static void installCard(final MTEDistributedMEOutputBus bus, final ItemStack card) {
+        bus.getRealInventory()[0] = card;
+        bus.onContentsChanged(0);
+    }
+
+    public void twoUnfilteredBussesRoutePastFullFirstBus() {
+        for (final boolean smallFirst : new boolean[] { true, false }) {
+            final MTEDistributedMEOutputBus small = bus();
+            final MTEDistributedMEOutputBus large = bus();
+            installCard(small, card());
+            installCard(large, card64k());
+            final long smallQuota = small.state()
+                .store()
+                .quota();
+            final long largeQuota = large.state()
+                .store()
+                .quota();
+            assertTrue(largeQuota > smallQuota);
+            receive(small.state(), 0, smallQuota);
+            final java.util.List<gregtech.api.interfaces.IOutputBus> busses = smallFirst ? Arrays.asList(small, large)
+                : Arrays.asList(large, small);
+            final ItemEjectionHelper check = new ItemEjectionHelper(busses, true, true);
+            assertEquals(1, check.ejectItems(Collections.singletonList(item(0, 17)), 1));
+            assertEquals(
+                smallQuota,
+                small.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                0,
+                large.state()
+                    .store()
+                    .quantity(id(0)));
+            final ItemEjectionHelper delivery = new ItemEjectionHelper(busses, true);
+            assertEquals(1, delivery.ejectItems(Collections.singletonList(item(0, 17)), 1));
+            delivery.commit();
+            assertEquals(
+                smallQuota,
+                small.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                17,
+                large.state()
+                    .store()
+                    .quantity(id(0)));
+            assertFalse(
+                small.state()
+                    .store()
+                    .hasEmergencyStock());
+            actual(large, 0, (int) largeQuota - 17);
+            for (final boolean recipeCheck : new boolean[] { true, false }) {
+                final ItemEjectionHelper full = new ItemEjectionHelper(busses, true, recipeCheck);
+                assertEquals(0, full.ejectItems(Collections.singletonList(item(0, 1)), 1));
+                if (!recipeCheck) full.commit();
+                assertEquals(
+                    smallQuota,
+                    small.state()
+                        .store()
+                        .quantity(id(0)));
+                assertEquals(
+                    largeQuota,
+                    large.state()
+                        .store()
+                        .quantity(id(0)));
+            }
+        }
+    }
+
+    public void invertedNativeCellFiltersAndGtPriorityRouteBothBusOrders() {
+        for (final boolean smallFirst : new boolean[] { true, false }) {
+            final MTEDistributedMEOutputBus small = bus();
+            final MTEDistributedMEOutputBus large = bus();
+            final ItemStack inverted = card64k();
+            final ItemBasicStorageCell cell = (ItemBasicStorageCell) inverted.getItem();
+            cell.getConfigAEInventory(inverted)
+                .putAEStackInSlot(0, AEItemStack.create(item(0, 1)));
+            final ItemStack inverter = appeng.api.AEApi.instance()
+                .definitions()
+                .materials()
+                .cardInverter()
+                .maybeStack(1)
+                .get();
+            if (Item.getIdFromItem(inverter.getItem()) < 0)
+                Item.itemRegistry.addObject(31021, "appliedenergistics2:test_material", inverter.getItem());
+            cell.getUpgradesInventory(inverted)
+                .setInventorySlotContents(0, inverter);
+            final ItemStack before = inverted.copy();
+            installCard(small, card());
+            installCard(large, inverted);
+            assertTrue(large.isFiltered());
+            assertFalse(large.isFilteredToItem(id(0)));
+            assertTrue(large.isFilteredToItem(id(1)));
+            assertEquals(gregtech.api.enums.OutputBusType.MECacheFiltered, large.getBusType());
+            assertFalse(small.isFiltered());
+            assertEquals(gregtech.api.enums.OutputBusType.MECacheUnfiltered, small.getBusType());
+            final DistributedItemBusState restored = DistributedItemBusState.read(
+                large.state()
+                    .write(),
+                inverted);
+            assertTrue(
+                restored.output()
+                    .isFiltered());
+            assertFalse(
+                restored.output()
+                    .isFilteredToItem(id(0)));
+            assertTrue(
+                restored.output()
+                    .isFilteredToItem(id(1)));
+            final java.util.List<gregtech.api.interfaces.IOutputBus> busses = smallFirst ? Arrays.asList(small, large)
+                : Arrays.asList(large, small);
+            final java.util.List<ItemStack> outputs = Arrays.asList(item(0, 17), item(1, 23));
+            final ItemEjectionHelper check = new ItemEjectionHelper(busses, true, true);
+            assertEquals(1, check.ejectItems(outputs, 1));
+            assertEquals(
+                0,
+                small.state()
+                    .store()
+                    .identityCount());
+            assertEquals(
+                0,
+                large.state()
+                    .store()
+                    .identityCount());
+            final ItemEjectionHelper delivery = new ItemEjectionHelper(busses, true);
+            assertEquals(1, delivery.ejectItems(outputs, 1));
+            delivery.commit();
+            assertEquals(
+                17,
+                small.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                0,
+                small.state()
+                    .store()
+                    .quantity(id(1)));
+            assertEquals(
+                0,
+                large.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                23,
+                large.state()
+                    .store()
+                    .quantity(id(1)));
+            final long smallQuota = small.state()
+                .store()
+                .quota();
+            actual(small, 0, (int) smallQuota - 17);
+            for (final boolean recipeCheck : new boolean[] { true, false }) {
+                final ItemEjectionHelper blocked = new ItemEjectionHelper(busses, true, recipeCheck);
+                assertEquals(0, blocked.ejectItems(Collections.singletonList(item(0, 1)), 1));
+                if (!recipeCheck) blocked.commit();
+                assertEquals(
+                    smallQuota,
+                    small.state()
+                        .store()
+                        .quantity(id(0)));
+                assertEquals(
+                    0,
+                    large.state()
+                        .store()
+                        .quantity(id(0)));
+            }
+            assertTrue(ItemStack.areItemStacksEqual(before, inverted));
+        }
     }
 
     public void cardCopyCapacityAndStoredContentsStayUnchanged() {

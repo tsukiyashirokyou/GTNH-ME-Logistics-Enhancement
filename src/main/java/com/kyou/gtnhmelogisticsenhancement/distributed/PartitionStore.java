@@ -372,6 +372,7 @@ public final class PartitionStore<K> {
         private Plan plan = new Plan();
         private final Set<K> completed = new HashSet<>();
         private boolean emergencyAllowed;
+        private boolean protectAcceptedOutput;
         private boolean started;
         private boolean active = true;
 
@@ -379,10 +380,10 @@ public final class PartitionStore<K> {
             this.emergencyAllowed = emergencyAllowed;
         }
 
-        void setEmergencyAllowed(final boolean allowed) {
+        void setProtectAcceptedOutput(final boolean protect) {
             this.requireActive();
             if (this.started) throw new IllegalStateException("Output phase flags are frozen after first use");
-            this.emergencyAllowed = allowed;
+            this.protectAcceptedOutput = protect;
         }
 
         public Map<K, Long> pending() {
@@ -429,6 +430,9 @@ public final class PartitionStore<K> {
         public void commit() {
             this.requireActive();
             this.started = true;
+            // GT may have other normal destinations. Never enable emergency admission while it is routing.
+            // At commit only previously accepted deltas remain, so rebasing them cannot steal a later bus's output.
+            this.emergencyAllowed |= this.protectAcceptedOutput;
             try {
                 this.refreshPlan();
                 if (!this.plan.pending.isEmpty()) {
@@ -470,7 +474,7 @@ public final class PartitionStore<K> {
 
         private void fail(final RuntimeException problem, final K identity, final long amount) {
             // Strict callers retain their exception/pending plan. A failed protected receipt also persists a lock.
-            if (this.emergencyAllowed && PartitionStore.this.failure == null) {
+            if ((this.emergencyAllowed || this.protectAcceptedOutput) && PartitionStore.this.failure == null) {
                 final String reason = problem instanceof ArithmeticException ? "ARITHMETIC"
                     : problem instanceof CommitConflictException ? "PLAN_CONFLICT" : "INVALID_OR_CALLBACK";
                 PartitionStore.this.failure = new Failure<>(
@@ -481,7 +485,8 @@ public final class PartitionStore<K> {
                     identity,
                     amount);
             }
-            if (this.emergencyAllowed || problem instanceof CommitConflictException) this.active = false;
+            if (this.emergencyAllowed || this.protectAcceptedOutput || problem instanceof CommitConflictException)
+                this.active = false;
         }
 
         private void requireActive() {

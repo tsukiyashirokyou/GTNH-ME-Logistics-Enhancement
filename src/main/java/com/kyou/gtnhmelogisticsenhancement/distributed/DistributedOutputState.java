@@ -36,6 +36,10 @@ public class DistributedOutputState<K> {
         long capacity(int partitions);
 
         boolean accepts(K identity);
+
+        default boolean filtered() {
+            return false;
+        }
     }
 
     private int period = MIN_PERIOD;
@@ -86,6 +90,14 @@ public class DistributedOutputState<K> {
 
     public boolean validCard() {
         return this.policy.valid();
+    }
+
+    public boolean filtered() {
+        return this.policy.filtered();
+    }
+
+    public boolean accepts(final K identity) {
+        return this.policy.accepts(identity);
     }
 
     public void stop() {

@@ -1,6 +1,8 @@
 package com.kyou.gtnhmelogisticsenhancement.distributed;
 
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import net.minecraft.item.ItemStack;
 
@@ -13,13 +15,22 @@ import gregtech.api.util.GTUtility.ItemId;
 public final class PartitionItemOutput implements IOutputBus {
 
     private final PartitionStore<ItemId> store;
+    private final BooleanSupplier filtered;
+    private final Predicate<ItemId> accepts;
 
     public PartitionItemOutput() {
         this(new PartitionStore<>(PartitionStore.ITEM_CAPACITY));
     }
 
     public PartitionItemOutput(final PartitionStore<ItemId> store) {
+        this(store, () -> false, identity -> false);
+    }
+
+    PartitionItemOutput(final PartitionStore<ItemId> store, final BooleanSupplier filtered,
+        final Predicate<ItemId> accepts) {
         this.store = Objects.requireNonNull(store, "store");
+        this.filtered = Objects.requireNonNull(filtered, "filtered");
+        this.accepts = Objects.requireNonNull(accepts, "accepts");
     }
 
     public PartitionStore<ItemId> store() {
@@ -28,17 +39,17 @@ public final class PartitionItemOutput implements IOutputBus {
 
     @Override
     public boolean isFiltered() {
-        return false;
+        return this.filtered.getAsBoolean();
     }
 
     @Override
     public boolean isFilteredToItem(final ItemId identity) {
-        return false;
+        return this.accepts.test(identity);
     }
 
     @Override
     public OutputBusType getBusType() {
-        return OutputBusType.MECacheUnfiltered;
+        return this.isFiltered() ? OutputBusType.MECacheFiltered : OutputBusType.MECacheUnfiltered;
     }
 
     @Override

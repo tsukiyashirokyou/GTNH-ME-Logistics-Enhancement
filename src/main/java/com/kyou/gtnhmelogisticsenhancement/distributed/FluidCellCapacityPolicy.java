@@ -138,6 +138,11 @@ public final class FluidCellCapacityPolicy implements DistributedOutputState.Cap
     }
 
     @Override
+    public boolean filtered() {
+        return this.handler != null && this.handler.isPreformatted();
+    }
+
+    @Override
     public boolean accepts(final FluidId identity) {
         if (!this.valid) return false;
         if (this.handler == null) return true;

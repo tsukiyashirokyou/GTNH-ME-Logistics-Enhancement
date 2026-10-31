@@ -28,6 +28,7 @@ import appeng.api.storage.data.IAEFluidStack;
 import appeng.me.storage.CellInventory;
 import appeng.me.storage.FluidCellInventoryHandler;
 import appeng.util.item.AEFluidStack;
+import gregtech.api.enums.OutputHatchType;
 import gregtech.api.interfaces.IOutputHatchTransaction;
 import gregtech.api.interfaces.IOutputTransaction;
 import gregtech.api.interfaces.ITexture;
@@ -232,8 +233,12 @@ public class DistributedHatchFixture {
         hatch.configurePartitions(1);
         assertEquals(1, check(hatch, fluid(0, 1000)));
         assertEquals(1, check(hatch, fluid(1, 1000)));
-        actual(hatch, 0, 1000);
-        actual(hatch, 1, 1000);
+        final FluidEjectionHelper first = new FluidEjectionHelper(Collections.singletonList(hatch), true);
+        final FluidEjectionHelper second = new FluidEjectionHelper(Collections.singletonList(hatch), true);
+        assertEquals(1, first.ejectFluids(Collections.singletonList(fluid(0, 1000)), 1));
+        assertEquals(1, second.ejectFluids(Collections.singletonList(fluid(1, 1000)), 1));
+        first.commit();
+        second.commit();
         assertEquals(
             1000,
             hatch.state()
@@ -260,8 +265,12 @@ public class DistributedHatchFixture {
         actual(hatch, 0, 350);
         assertEquals(1, check(hatch, fluid(0, 1000)));
         assertEquals(1, check(hatch, fluid(0, 1000)));
-        actual(hatch, 0, 1000);
-        actual(hatch, 0, 1000);
+        final FluidEjectionHelper first = new FluidEjectionHelper(Collections.singletonList(hatch), true);
+        final FluidEjectionHelper second = new FluidEjectionHelper(Collections.singletonList(hatch), true);
+        assertEquals(1, first.ejectFluids(Collections.singletonList(fluid(0, 1000)), 1));
+        assertEquals(1, second.ejectFluids(Collections.singletonList(fluid(0, 1000)), 1));
+        first.commit();
+        second.commit();
         assertEquals(
             2350,
             hatch.state()
@@ -300,10 +309,12 @@ public class DistributedHatchFixture {
                 .configure(4, 1600);
             actual(hatch, 0, 1000);
             final FluidEjectionHelper helper = new FluidEjectionHelper(Collections.singletonList(hatch), protect);
-            assertEquals(1, helper.ejectFluids(Arrays.asList(fluid(0, 10), fluid(1, 100), fluid(2, 200)), 1));
+            assertEquals(
+                protect ? 0 : 1,
+                helper.ejectFluids(Arrays.asList(fluid(0, 10), fluid(1, 100), fluid(2, 200)), 1));
             helper.commit();
             assertEquals(
-                protect ? 1010 : 1000,
+                1000,
                 hatch.state()
                     .store()
                     .quantity(id(0)));
@@ -317,6 +328,138 @@ public class DistributedHatchFixture {
                 hatch.state()
                     .store()
                     .quantity(id(2)));
+        }
+    }
+
+    public void twoHatchesSkipFullCacheAndUseAvailableCacheInBothOrders() {
+        for (final boolean reverse : new boolean[] { false, true }) {
+            final MTEDistributedMEOutputHatch full = hatch();
+            final MTEDistributedMEOutputHatch available = hatch();
+            full.state()
+                .store()
+                .configure(1, 400);
+            available.state()
+                .store()
+                .configure(1, 4000);
+            actual(full, 0, 400);
+            final java.util.List<MTEDistributedMEOutputHatch> hatches = reverse ? Arrays.asList(available, full)
+                : Arrays.asList(full, available);
+            assertEquals(
+                1,
+                new FluidEjectionHelper(hatches, true, true).ejectFluids(Collections.singletonList(fluid(0, 100)), 1));
+            final FluidEjectionHelper actual = new FluidEjectionHelper(hatches, true);
+            assertEquals(1, actual.ejectFluids(Collections.singletonList(fluid(0, 100)), 1));
+            actual.commit();
+            assertEquals(
+                400,
+                full.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                100,
+                available.state()
+                    .store()
+                    .quantity(id(0)));
+            assertFalse(
+                full.state()
+                    .store()
+                    .hasEmergencyStock());
+        }
+    }
+
+    public void twoHatchesUseRealInverterFiltersAndBlockFullOutputsInBothOrders() {
+        for (final boolean reverse : new boolean[] { false, true }) {
+            final MTEDistributedMEOutputHatch inverted = hatch();
+            final MTEDistributedMEOutputHatch unfiltered = hatch();
+            inverted.configurePartitions(1);
+            unfiltered.configurePartitions(1);
+            final ItemMultiFluidStorageCell largeCell = new ItemMultiFluidStorageCell(CellType.Cell64kPart, 0, 64);
+            final ItemStack invertedCard = new ItemStack(largeCell);
+            largeCell.getConfigAEInventory(invertedCard)
+                .putAEStackInSlot(0, AEFluidStack.create(fluid(0, 1)));
+            largeCell.getUpgradesInventory(invertedCard)
+                .setInventorySlotContents(
+                    0,
+                    appeng.api.AEApi.instance()
+                        .definitions()
+                        .materials()
+                        .cardInverter()
+                        .maybeStack(1)
+                        .get());
+            inverted.getRealInventory()[0] = invertedCard;
+            inverted.onContentsChanged(0);
+            unfiltered.getRealInventory()[0] = new ItemStack(new ItemMultiFluidStorageCell(CellType.Cell1kPart, 0, 1));
+            unfiltered.onContentsChanged(0);
+            final FluidId approvedId = FluidId.create(new FluidStack(FluidRegistry.WATER, 1));
+            assertTrue(inverted.isFiltered());
+            assertEquals(OutputHatchType.MECacheFiltered, inverted.getHatchType());
+            assertFalse(inverted.isFilteredToFluid(id(0)));
+            assertTrue(inverted.isFilteredToFluid(approvedId));
+            assertFalse(unfiltered.isFiltered());
+            final java.util.List<MTEDistributedMEOutputHatch> hatches = reverse ? Arrays.asList(unfiltered, inverted)
+                : Arrays.asList(inverted, unfiltered);
+
+            // A filtered cache has native GT priority even when the unfiltered cache appears first in the structure.
+            final FluidEjectionHelper approved = new FluidEjectionHelper(hatches, true);
+            assertEquals(
+                1,
+                approved.ejectFluids(Collections.singletonList(new FluidStack(FluidRegistry.WATER, 100)), 1));
+            approved.commit();
+            assertEquals(
+                100,
+                inverted.state()
+                    .store()
+                    .quantity(approvedId));
+            assertEquals(
+                0,
+                unfiltered.state()
+                    .store()
+                    .identityCount());
+
+            final int quota = Math.toIntExact(
+                unfiltered.state()
+                    .store()
+                    .quota());
+            final FluidEjectionHelper fill = new FluidEjectionHelper(hatches, true);
+            assertEquals(1, fill.ejectFluids(Collections.singletonList(fluid(0, quota)), 1));
+            fill.commit();
+            for (int attempt = 0; attempt < 3; attempt++) {
+                assertEquals(
+                    0,
+                    new FluidEjectionHelper(hatches, true, true)
+                        .ejectFluids(Collections.singletonList(fluid(0, 1)), 1));
+                assertEquals(
+                    0,
+                    new FluidEjectionHelper(hatches, true, true)
+                        .ejectFluids(Arrays.asList(fluid(0, 1), new FluidStack(FluidRegistry.WATER, 100)), 1));
+                final FluidEjectionHelper blocked = new FluidEjectionHelper(hatches, true);
+                assertEquals(0, blocked.ejectFluids(Collections.singletonList(fluid(0, 1)), 1));
+                blocked.commit();
+            }
+            final FluidEjectionHelper unrelated = new FluidEjectionHelper(hatches, true);
+            assertEquals(
+                1,
+                unrelated.ejectFluids(Collections.singletonList(new FluidStack(FluidRegistry.WATER, 100)), 1));
+            unrelated.commit();
+            assertEquals(
+                quota,
+                unfiltered.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                0,
+                inverted.state()
+                    .store()
+                    .quantity(id(0)));
+            assertEquals(
+                200,
+                inverted.state()
+                    .store()
+                    .quantity(approvedId));
+            assertFalse(
+                unfiltered.state()
+                    .store()
+                    .hasEmergencyStock());
         }
     }
 
@@ -373,14 +516,14 @@ public class DistributedHatchFixture {
     public void layerWrapperForwardsFlagsAndIntChunks() {
         final MTEDistributedMEOutputHatch hatch = hatch();
         hatch.configurePartitions(1);
-        actual(hatch, 1, 1);
         final OutputHatchWrapper layer = new OutputHatchWrapper(hatch, id(0)::equals);
+        final FluidEjectionHelper actual = new FluidEjectionHelper(Collections.singletonList(layer), true);
+        assertEquals(3, actual.ejectFluids(Collections.singletonList(fluid(0, Integer.MAX_VALUE)), 3));
+        actual(hatch, 1, 1);
         assertEquals(
             0,
             new FluidEjectionHelper(Collections.singletonList(layer), true, true)
                 .ejectFluids(Collections.singletonList(fluid(0, 10)), 1));
-        final FluidEjectionHelper actual = new FluidEjectionHelper(Collections.singletonList(layer), true);
-        assertEquals(3, actual.ejectFluids(Collections.singletonList(fluid(0, Integer.MAX_VALUE)), 3));
         actual.commit();
         assertEquals(
             3L * Integer.MAX_VALUE,
@@ -1495,7 +1638,7 @@ public class DistributedHatchFixture {
         hatch.state()
             .store()
             .setAdmissionFilter(identity -> false);
-        actual(hatch, 1, 100);
+        receive(hatch.state(), 1, 100);
         stale.commit();
         assertEquals(
             1000,

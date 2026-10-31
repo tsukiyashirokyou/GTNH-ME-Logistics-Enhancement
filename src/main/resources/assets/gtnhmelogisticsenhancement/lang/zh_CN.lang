@@ -80,7 +80,7 @@ gtnhmelogisticsenhancement.gui.transfer_disabled=本组转运已关闭
 gtnhmelogisticsenhancement.bus.name=分配输出总线（ME）
 gtnhmelogisticsenhancement.bus.description=GT物品输出：独立long分区，正常准入N=1～16。
 gtnhmelogisticsenhancement.bus.card_note=容量令牌：元件原有内容保留，不导入本机或暴露给ME网络。
-gtnhmelogisticsenhancement.bus.emergency_note=仅GT受保护实际事务可应急超限；鸿蒙之眼不在已验证兼容范围。
+gtnhmelogisticsenhancement.bus.emergency_note=过滤与配额始终约束新输入；应急仅保全已接纳事务的提交冲突。
 gtnhmelogisticsenhancement.bus.partitions=分区数N
 gtnhmelogisticsenhancement.bus.period=输出周期（秒）
 gtnhmelogisticsenhancement.bus.network=ME激活：%s | 供电：%s | 启动中：%s
@@ -100,7 +100,7 @@ gtnhmelogisticsenhancement.bus.legacy=缩容保留位置；内容仍参与输出
 gtnhmelogisticsenhancement.hatch.name=分配输出仓 ME
 gtnhmelogisticsenhancement.hatch.description=GT 分区流体输出；占用一个 ME 频道，原生耗能注入
 gtnhmelogisticsenhancement.hatch.card_note=可放入已支持的有限流体存储元件；元件原有内容保留
-gtnhmelogisticsenhancement.hatch.emergency_note=仅受防销毁保护的实际 GT 输出事务可应急突破正常准入限制
+gtnhmelogisticsenhancement.hatch.emergency_note=新输入遵守过滤与配额；受保护事务仅在提交冲突时应急保全
 gtnhmelogisticsenhancement.hatch.partitions=分区数 N
 gtnhmelogisticsenhancement.hatch.period=周期（秒）
 gtnhmelogisticsenhancement.hatch.network=ME 活跃：%s | 供电：%s | 启动中：%s

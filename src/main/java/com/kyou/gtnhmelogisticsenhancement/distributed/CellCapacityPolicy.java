@@ -103,6 +103,11 @@ public final class CellCapacityPolicy implements DistributedOutputState.Capacity
             Math.multiplyExact(Math.max(0, this.bytes - overhead), ITEM_STACK_TYPE.getAmountPerByte()));
     }
 
+    @Override
+    public boolean filtered() {
+        return this.handler != null && this.handler.isPreformatted();
+    }
+
     public boolean accepts(final ItemId identity) {
         if (!this.valid) return false;
         if (this.handler == null) return true;

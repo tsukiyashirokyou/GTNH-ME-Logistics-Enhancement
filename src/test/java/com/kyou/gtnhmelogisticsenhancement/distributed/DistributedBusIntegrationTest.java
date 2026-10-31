@@ -27,6 +27,8 @@ public class DistributedBusIntegrationTest {
     public static Collection<Object[]> scenarios() {
         return Arrays.asList(
             new Object[][] { { "mteInstancesAndTransactionsAreIndependent" }, { "genericBusHazardsAreDisabled" },
+                { "twoUnfilteredBussesRoutePastFullFirstBus" },
+                { "invertedNativeCellFiltersAndGtPriorityRouteBothBusOrders" },
                 { "fortyTickScheduleDoesNotBankIdleTime" }, { "completePartialAndRejectedInsertionConserveStock" },
                 { "outputAmountsNeverExceedIntBridge" }, { "fiveThousandEmergencyIdentitiesRotateInBoundedBatches" },
                 { "uncertainOutputCannotReplayAcrossSaveReload" }, { "badRemainderNeverDebitsAndPersistsEvidence" },

@@ -101,14 +101,16 @@ public class NativeOutputFixture {
                 bus.store()
                     .quantity(itemId(1)));
             final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), mode[0]);
-            assertEquals(1, actual.ejectItems(Arrays.asList(item(0, 1000), item(1, 200), item(2, 300)), 1));
+            assertEquals(
+                mode[0] ? 0 : 1,
+                actual.ejectItems(Arrays.asList(item(0, 1000), item(1, 200), item(2, 300)), 1));
             actual.commit();
             assertEquals(
-                mode[0] ? 2350 : 1350,
+                1350,
                 bus.store()
                     .quantity(itemId(0)));
             assertEquals(
-                mode[0],
+                false,
                 bus.store()
                     .hasEmergencyStock());
             assertEquals(
@@ -134,14 +136,16 @@ public class NativeOutputFixture {
                 hatch.store()
                     .quantity(FluidId.create(fluid(1, 1))));
             final FluidEjectionHelper fluidActual = new FluidEjectionHelper(Collections.singletonList(hatch), mode[1]);
-            assertEquals(1, fluidActual.ejectFluids(Arrays.asList(fluid(0, 1000), fluid(1, 200), fluid(2, 300)), 1));
+            assertEquals(
+                mode[1] ? 0 : 1,
+                fluidActual.ejectFluids(Arrays.asList(fluid(0, 1000), fluid(1, 200), fluid(2, 300)), 1));
             fluidActual.commit();
             assertEquals(
-                mode[1] ? 129000 : 128000,
+                128000,
                 hatch.store()
                     .quantity(FluidId.create(fluid(0, 1))));
             assertEquals(
-                mode[1],
+                false,
                 hatch.store()
                     .hasEmergencyStock());
             assertEquals(
@@ -159,7 +163,7 @@ public class NativeOutputFixture {
         final PartitionItemOutput first = new PartitionItemOutput(new PartitionStore<>(1, 400));
         final PartitionItemOutput second = new PartitionItemOutput();
         this.items(first, 0, 1350);
-        final ItemEjectionHelper helper = new ItemEjectionHelper(Arrays.<IOutputBus>asList(first, second), false);
+        final ItemEjectionHelper helper = new ItemEjectionHelper(Arrays.<IOutputBus>asList(first, second), true);
         assertEquals(1, helper.ejectItems(Arrays.asList(item(0, 1000), item(1, 200)), 1));
         helper.commit();
         assertEquals(
@@ -274,7 +278,7 @@ public class NativeOutputFixture {
                 .isEmpty());
     }
 
-    public void twoRealPrechecksCanPassButNativeCompletionCannotGuaranteeSharedDelivery() {
+    public void independentPrechecksDoNotAuthorizeLaterFullActualTransactions() {
         final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(1, 400));
         for (int meta = 0; meta < 2; meta++) {
             final ItemEjectionHelper check = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
@@ -284,14 +288,14 @@ public class NativeOutputFixture {
         assertEquals(1, first.ejectItems(Collections.singletonList(item(0, 1000)), 1));
         first.commit();
         final ItemEjectionHelper second = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertEquals(1, second.ejectItems(Collections.singletonList(item(1, 1000)), 1));
+        assertEquals(0, second.ejectItems(Collections.singletonList(item(1, 1000)), 1));
         second.commit();
         assertEquals(
             1000,
             bus.store()
                 .quantity(itemId(0)));
         assertEquals(
-            1000,
+            0,
             bus.store()
                 .quantity(itemId(1)));
         assertEquals(
@@ -300,13 +304,13 @@ public class NativeOutputFixture {
                 .normalEntries()
                 .size());
         assertEquals(
-            1,
+            0,
             bus.store()
                 .overflowIdentityCount());
         final ItemEjectionHelper future = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
         assertEquals(0, future.ejectItems(Collections.singletonList(item(2, 1)), 1));
         assertFalse(bus.storePartial(item(1, 10)));
-        // The phase-one counterexample now completes in the real helper. No real controller/world is running here.
+        // A recipe precheck does not reserve capacity for a later, independently created output transaction.
     }
 
     public void nativeHelpersRespectOneAndSixteenPartitionsAndNeverCreateTheNextIdentity() {
@@ -336,11 +340,11 @@ public class NativeOutputFixture {
         }
         for (int machine = 0; machine < 2; machine++) {
             final ItemEjectionHelper output = new ItemEjectionHelper(Collections.singletonList(bus), true);
-            assertEquals(1, output.ejectItems(Collections.singletonList(item(0, 1000)), 1));
+            assertEquals(machine == 0 ? 1 : 0, output.ejectItems(Collections.singletonList(item(0, 1000)), 1));
             output.commit();
         }
         assertEquals(
-            2350,
+            1350,
             bus.store()
                 .quantity(itemId(0)));
         assertEquals(
@@ -355,11 +359,11 @@ public class NativeOutputFixture {
         }
         for (int machine = 0; machine < 2; machine++) {
             final FluidEjectionHelper output = new FluidEjectionHelper(Collections.singletonList(hatch), true);
-            assertEquals(1, output.ejectFluids(Collections.singletonList(fluid(0, 1000)), 1));
+            assertEquals(machine == 0 ? 1 : 0, output.ejectFluids(Collections.singletonList(fluid(0, 1000)), 1));
             output.commit();
         }
         assertEquals(
-            2350,
+            1350,
             hatch.store()
                 .quantity(FluidId.create(fluid(0, 1))));
         assertEquals(
@@ -432,7 +436,7 @@ public class NativeOutputFixture {
                 .quantity(FluidId.create(fluid(0, 1))));
     }
 
-    public void emergencyActualReceiptNeverAuthorizesRecipeChecksOrUnprotectedDirectCalls() {
+    public void protectedActualTransactionsRespectCurrentAdmissionAndPreserveRemainders() {
         final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(1, 400));
         this.items(bus, 0, 1000);
         final PartitionItemOutput.Transaction simulated = bus.createTransaction();
@@ -441,36 +445,45 @@ public class NativeOutputFixture {
         assertFalse(simulated.hasAvailableSpace());
         assertFalse(simulated.storePartial(itemId(1), item(1, 1), 0, 0));
         assertThrows(IllegalStateException.class, simulated::commit);
-        assertEquals(
-            1,
-            bus.store()
-                .identityCount());
         assertFalse(bus.storePartial(item(1, 1), true));
         assertFalse(bus.storePartial(item(1, 1), false));
-        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertEquals(1, actual.ejectItems(Collections.singletonList(item(1, 1)), 1));
+        final PartitionItemOutput.Transaction actual = bus.createTransaction();
+        actual.setProtectOutput(true);
+        assertFalse(actual.hasAvailableSpace());
+        final ItemStack remainder = item(1, 1);
+        assertFalse(actual.storePartial(itemId(1), remainder, 0, 0));
+        assertEquals(1, remainder.stackSize);
         actual.commit();
+        final ItemEjectionHelper helper = new ItemEjectionHelper(Collections.singletonList(bus), true);
+        assertEquals(0, helper.ejectItems(Collections.singletonList(item(1, 1)), 1));
+        helper.commit();
         assertEquals(
-            1,
+            1000,
             bus.store()
-                .quantity(itemId(1)));
-        final ItemEjectionHelper next = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
-        assertEquals(0, next.ejectItems(Collections.singletonList(item(1, 1)), 1));
-    }
-
-    public void nativeProtectedReceiptHandlesSixtyFourKindsAndCountsAllOfThemInPrechecks() {
-        final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(16, 1600));
-        final java.util.List<ItemStack> outputs = new java.util.ArrayList<>();
-        for (int i = 0; i < 64; i++) outputs.add(item(i, 1));
-        final ItemEjectionHelper check = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
-        assertEquals(0, check.ejectItems(outputs, 1));
+                .quantity(itemId(0)));
         assertEquals(
             0,
             bus.store()
+                .quantity(itemId(1)));
+        assertEquals(
+            1,
+            bus.store()
                 .identityCount());
-        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertEquals(1, actual.ejectItems(outputs, 1));
-        actual.commit();
+        assertFalse(
+            bus.store()
+                .hasEmergencyStock());
+    }
+
+    public void historicalEmergencyItemsRemainVisibleAndBlockNativeNewTypes() {
+        final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(16, 1600));
+        final java.util.List<ItemStack> outputs = new java.util.ArrayList<>();
+        final PartitionStore<ItemId>.Transaction historical = bus.store()
+            .transaction(true);
+        for (int i = 0; i < 64; i++) {
+            outputs.add(item(i, 1));
+            assertTrue(historical.offer(itemId(i), 1));
+        }
+        historical.commit();
         assertEquals(
             64,
             bus.store()
@@ -484,6 +497,19 @@ public class NativeOutputFixture {
             48,
             bus.store()
                 .overflowIdentityCount());
+        final ItemEjectionHelper check = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
+        assertEquals(0, check.ejectItems(outputs, 1));
+        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
+        assertEquals(0, actual.ejectItems(Collections.singletonList(item(64, 1)), 1));
+        actual.commit();
+        assertEquals(
+            64,
+            bus.store()
+                .identityCount());
+        assertEquals(
+            0,
+            bus.store()
+                .quantity(itemId(64)));
         for (final PartitionStore.Entry<ItemId> entry : bus.store()
             .entries()) {
             if (entry.slot < 0) {
@@ -493,18 +519,16 @@ public class NativeOutputFixture {
         }
     }
 
-    public void nativeEmergencyFluidChunksAndDuplicatesSurviveLongNbtRoundTrip() {
+    public void historicalEmergencyFluidAmountsSurviveLongNbtRoundTrip() {
         final PartitionFluidOutput hatch = new PartitionFluidOutput(new PartitionStore<>(1, 400));
         this.fluids(hatch, 0, 1000);
-        final FluidStack offered = fluid(1, Integer.MAX_VALUE);
-        final FluidEjectionHelper actual = new FluidEjectionHelper(Collections.singletonList(hatch), true);
-        assertEquals(3, actual.ejectFluids(Arrays.asList(offered, offered.copy()), 3));
-        actual.commit();
+        final FluidId identity = FluidId.create(fluid(1, 1));
         final long expected = Integer.MAX_VALUE * 6L;
+        EmergencyPartitionTest.emergency(hatch.store(), identity, expected);
         assertEquals(
             expected,
             hatch.store()
-                .quantity(FluidId.create(offered)));
+                .quantity(identity));
         assertEquals(
             1,
             hatch.store()
@@ -512,30 +536,48 @@ public class NativeOutputFixture {
         final NBTTagCompound saved = PartitionNbt.write(hatch.store(), DistributedIdentities.FLUIDS);
         final PartitionStore<FluidId> restored = PartitionNbt.read(saved, DistributedIdentities.FLUIDS)
             .store();
-        assertEquals(expected, restored.quantity(FluidId.create(offered)));
+        assertEquals(expected, restored.quantity(identity));
         assertEquals(saved, PartitionNbt.write(restored, DistributedIdentities.FLUIDS));
+        final FluidEjectionHelper actual = new FluidEjectionHelper(Collections.singletonList(hatch), true);
+        assertEquals(0, actual.ejectFluids(Collections.singletonList(fluid(1, 1)), 1));
+        actual.commit();
+        assertEquals(
+            expected,
+            hatch.store()
+                .quantity(identity));
     }
 
-    public void nativeRecipeToCompletionSurvivesCapacityAndFilterChangesWithoutTokenOrMixin() {
+    public void protectedCommitPreservesAlreadyStagedOutputAfterPolicyChange() {
         final PartitionItemOutput bus = new PartitionItemOutput();
         final java.util.List<ItemStack> outputs = Arrays.asList(item(0, 1000), item(1, 2000));
         final ItemEjectionHelper check = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
         assertEquals(1, check.ejectItems(outputs, 1));
+        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
+        assertEquals(1, actual.ejectItems(outputs, 1));
         bus.store()
             .configure(1, 0);
         bus.store()
             .setAdmissionFilter(id -> false);
-        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertEquals(1, actual.ejectItems(outputs, 1));
         actual.commit();
         assertEquals(
             3000,
             bus.store()
                 .totalQuantity()
                 .longValueExact());
-        final ItemEjectionHelper future = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
-        assertEquals(0, future.ejectItems(outputs, 1));
+        assertTrue(
+            bus.store()
+                .hasEmergencyStock());
+        final ItemEjectionHelper futureCheck = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
+        assertEquals(0, futureCheck.ejectItems(outputs, 1));
+        final ItemEjectionHelper futureActual = new ItemEjectionHelper(Collections.singletonList(bus), true);
+        assertEquals(0, futureActual.ejectItems(outputs, 1));
+        futureActual.commit();
         assertFalse(bus.storePartial(item(2, 10)));
+        assertEquals(
+            3000,
+            bus.store()
+                .totalQuantity()
+                .longValueExact());
         assertEquals(
             2,
             bus.store()
@@ -570,18 +612,18 @@ public class NativeOutputFixture {
                 .longValueExact());
     }
 
-    public void protectedActualDrainsAndPromotesEmergencyTypesUsingTheCommonOutputView() {
+    public void historicalEmergencyTypesDrainAndPromoteUsingTheCommonOutputView() {
         final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(1, 400));
-        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertEquals(1, actual.ejectItems(Arrays.asList(item(0, 1000), item(1, 10)), 1));
-        actual.commit();
+        EmergencyPartitionTest.emergency(bus.store(), itemId(0), 1000);
+        EmergencyPartitionTest.emergency(bus.store(), itemId(1), 10);
         final ItemId normal = bus.store()
             .normalEntries()
             .get(0).identity;
-        final long quantity = bus.store()
-            .quantity(normal);
         bus.store()
-            .remove(normal, quantity);
+            .remove(
+                normal,
+                bus.store()
+                    .quantity(normal));
         assertEquals(
             1,
             bus.store()
@@ -620,35 +662,52 @@ public class NativeOutputFixture {
         assertFalse(strict.hasAvailableSpace());
         assertThrows(IllegalStateException.class, () -> strict.setRecipeCheck(false));
         assertFalse(strict.storePartial(itemId(1), item(1, 10), 0, 0));
+        final PartitionItemOutput.Transaction actual = bus.createTransaction();
+        actual.setProtectOutput(true);
+        assertFalse(actual.hasAvailableSpace());
+        assertThrows(IllegalStateException.class, () -> actual.setProtectOutput(false));
+        assertFalse(actual.storePartial(itemId(1), item(1, 10), 0, 0));
+        actual.complete(itemId(1));
+        actual.commit();
         assertEquals(
             0,
             bus.store()
                 .quantity(itemId(1)));
-        final PartitionItemOutput.Transaction actual = bus.createTransaction();
-        actual.setProtectOutput(true);
-        assertTrue(actual.hasAvailableSpace());
-        actual.storePartial(itemId(1), item(1, 10), 0, 0);
-        actual.complete(itemId(1));
-        actual.commit();
+        final PartitionItemOutput empty = new PartitionItemOutput();
+        final PartitionItemOutput.Transaction admitted = empty.createTransaction();
+        admitted.setProtectOutput(true);
+        assertTrue(admitted.storePartial(itemId(1), item(1, 10), 0, 0));
+        assertThrows(IllegalStateException.class, () -> admitted.setRecipeCheck(true));
+        admitted.commit();
         assertEquals(
             10,
-            bus.store()
+            empty.store()
                 .quantity(itemId(1)));
     }
 
-    public void actualHelperOverflowPreservesStockAndNonMaterializedFailureEvidence() {
+    public void protectedCommitOverflowPreservesStockAndNonMaterializedFailureEvidence() {
         final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(1, 400));
+        final PartitionItemOutput.Transaction actual = bus.createTransaction();
+        actual.setProtectOutput(true);
+        assertTrue(actual.storePartial(itemId(0), item(0, 1), 0, 0));
         PartitionStoreTest.add(bus.store(), itemId(0), Long.MAX_VALUE);
-        final ItemEjectionHelper actual = new ItemEjectionHelper(Collections.singletonList(bus), true);
-        assertThrows(ArithmeticException.class, () -> actual.ejectItems(Collections.singletonList(item(0, 1)), 1));
+        assertThrows(ArithmeticException.class, actual::commit);
         assertEquals(
             Long.MAX_VALUE,
             bus.store()
                 .quantity(itemId(0)));
         assertEquals(
-            1,
+            Long.valueOf(1),
+            actual.pending()
+                .get(itemId(0)));
+        assertEquals(
+            Long.valueOf(1),
             bus.store()
-                .failure().attemptedAmount);
+                .failure().pending.get(itemId(0)));
+        assertEquals(
+            "ARITHMETIC",
+            bus.store()
+                .failure().reason);
         final NBTTagCompound saved = PartitionNbt.write(bus.store(), DistributedIdentities.ITEMS);
         final PartitionStore<ItemId> restored = PartitionNbt.read(saved, DistributedIdentities.ITEMS)
             .store();
@@ -675,7 +734,7 @@ public class NativeOutputFixture {
 
     public void mixedNonAwareOutputKeepsItsNativeInterfaceContractAndCapacity() {
         final OrdinaryOutputFixture ordinary = new OrdinaryOutputFixture();
-        final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(1, 400));
+        final PartitionItemOutput bus = new PartitionItemOutput(new PartitionStore<>(2, 800));
         this.items(bus, 0, 1000);
         final ItemEjectionHelper mixed = new ItemEjectionHelper(Arrays.asList(ordinary, bus), true);
         assertEquals(1, mixed.ejectItems(Collections.singletonList(item(1, 1000)), 1));

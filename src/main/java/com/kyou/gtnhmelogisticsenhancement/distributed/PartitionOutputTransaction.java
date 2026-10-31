@@ -4,7 +4,7 @@ import java.util.Map;
 
 import gregtech.api.interfaces.IOutputTransaction;
 
-/** Shared GT transaction protocol. Protection belongs to GT's helper, not to this stock store. */
+/** GT routing always uses normal admission; protection only preserves already accepted commit deltas. */
 public abstract class PartitionOutputTransaction<K, T>
     implements IOutputTransaction<K, T>, IOutputTransaction.IRecipeCheckAware, IOutputTransaction.IProtectOutputAware {
 
@@ -20,14 +20,14 @@ public abstract class PartitionOutputTransaction<K, T>
     @Override
     public final void setRecipeCheck(final boolean recipeCheck) {
         this.requireActive();
-        this.transaction.setEmergencyAllowed(!recipeCheck && this.protectOutput);
+        this.transaction.setProtectAcceptedOutput(!recipeCheck && this.protectOutput);
         this.recipeCheck = recipeCheck;
     }
 
     @Override
     public final void setProtectOutput(final boolean protectOutput) {
         this.requireActive();
-        this.transaction.setEmergencyAllowed(!this.recipeCheck && protectOutput);
+        this.transaction.setProtectAcceptedOutput(!this.recipeCheck && protectOutput);
         this.protectOutput = protectOutput;
     }
 

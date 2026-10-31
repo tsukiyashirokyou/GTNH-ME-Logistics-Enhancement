@@ -12,7 +12,7 @@ public final class DistributedItemBusState extends DistributedOutputState<ItemId
 
     public DistributedItemBusState() {
         super(PartitionStore.ITEM_CAPACITY, DistributedIdentities.ITEMS, CellCapacityPolicy::inspect);
-        this.output = new PartitionItemOutput(this.store);
+        this.output = new PartitionItemOutput(this.store, this::filtered, this::accepts);
     }
 
     public PartitionItemOutput output() {
@@ -29,7 +29,7 @@ public final class DistributedItemBusState extends DistributedOutputState<ItemId
     public static DistributedItemBusState read(final NBTBase raw, final ItemStack card) {
         final DistributedItemBusState state = new DistributedItemBusState();
         state.readState(raw, card);
-        state.output = new PartitionItemOutput(state.store);
+        state.output = new PartitionItemOutput(state.store, state::filtered, state::accepts);
         return state;
     }
 }

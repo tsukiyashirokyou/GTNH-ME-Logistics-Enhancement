@@ -463,17 +463,20 @@ public class MTEDistributedMEOutputHatch extends MTEHatchOutput implements Distr
 
     @Override
     public boolean isFiltered() {
-        return false;
+        return this.state.output()
+            .isFiltered();
     }
 
     @Override
     public boolean isFilteredToFluid(final FluidId identity) {
-        return false;
+        return this.state.output()
+            .isFilteredToFluid(identity);
     }
 
     @Override
     public OutputHatchType getHatchType() {
-        return OutputHatchType.MECacheUnfiltered;
+        return this.state.output()
+            .getHatchType();
     }
 
     // Disable every inherited single-tank/container/adjacent-eject entry point. The card is the only real item slot.

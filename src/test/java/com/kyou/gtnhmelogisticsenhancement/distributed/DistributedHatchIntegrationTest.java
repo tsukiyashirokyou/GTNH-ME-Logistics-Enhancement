@@ -29,6 +29,8 @@ public class DistributedHatchIntegrationTest {
                 { "singleTankContainerAndNeighbourPathsAreDisabled" }, { "recipeCheckIsStrictAndWholeBatchIsSoft" },
                 { "sharedN1ProtectedRacesRetainBothIdentities" }, { "sharedQuotaProtectedRaceMerges2350" },
                 { "nativeHelperMergesDuplicatesAndIntMaxSegments" }, { "fourVoidingModesPropagateFluidProtection" },
+                { "twoHatchesSkipFullCacheAndUseAvailableCacheInBothOrders" },
+                { "twoHatchesUseRealInverterFiltersAndBlockFullOutputsInBothOrders" },
                 { "directFillAndStoreSimulationNeverGrantEmergency" },
                 { "layerWrapperRejectsOtherLayersEvenProtected" }, { "layerWrapperForwardsFlagsAndIntChunks" },
                 { "staleCommitRevalidatesNCapacityAndFilter" },

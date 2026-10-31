@@ -12,7 +12,7 @@ public final class DistributedFluidHatchState extends DistributedOutputState<Flu
 
     public DistributedFluidHatchState() {
         super(PartitionStore.FLUID_CAPACITY, DistributedIdentities.FLUIDS, FluidCellCapacityPolicy::inspect);
-        this.output = new PartitionFluidOutput(this.store);
+        this.output = new PartitionFluidOutput(this.store, this::filtered, this::accepts);
     }
 
     public PartitionFluidOutput output() {
@@ -22,7 +22,7 @@ public final class DistributedFluidHatchState extends DistributedOutputState<Flu
     public static DistributedFluidHatchState read(final NBTBase raw, final ItemStack card) {
         final DistributedFluidHatchState state = new DistributedFluidHatchState();
         state.readState(raw, card);
-        state.output = new PartitionFluidOutput(state.store);
+        state.output = new PartitionFluidOutput(state.store, state::filtered, state::accepts);
         return state;
     }
 }

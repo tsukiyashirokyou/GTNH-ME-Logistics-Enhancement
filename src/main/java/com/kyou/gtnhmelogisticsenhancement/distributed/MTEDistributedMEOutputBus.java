@@ -494,17 +494,20 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
 
     @Override
     public boolean isFiltered() {
-        return false;
+        return this.state.output()
+            .isFiltered();
     }
 
     @Override
     public boolean isFilteredToItem(final ItemId identity) {
-        return false;
+        return this.state.output()
+            .isFilteredToItem(identity);
     }
 
     @Override
     public OutputBusType getBusType() {
-        return OutputBusType.MECacheUnfiltered;
+        return this.state.output()
+            .getBusType();
     }
 
     @Override

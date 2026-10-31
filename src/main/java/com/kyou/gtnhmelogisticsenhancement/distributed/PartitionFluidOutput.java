@@ -1,6 +1,8 @@
 package com.kyou.gtnhmelogisticsenhancement.distributed;
 
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import net.minecraftforge.fluids.FluidStack;
 
@@ -13,13 +15,22 @@ import gregtech.api.util.GTUtility.FluidId;
 public final class PartitionFluidOutput implements IOutputHatch {
 
     private final PartitionStore<FluidId> store;
+    private final BooleanSupplier filtered;
+    private final Predicate<FluidId> accepts;
 
     public PartitionFluidOutput() {
         this(new PartitionStore<>(PartitionStore.FLUID_CAPACITY));
     }
 
     public PartitionFluidOutput(final PartitionStore<FluidId> store) {
+        this(store, () -> false, identity -> false);
+    }
+
+    PartitionFluidOutput(final PartitionStore<FluidId> store, final BooleanSupplier filtered,
+        final Predicate<FluidId> accepts) {
         this.store = Objects.requireNonNull(store, "store");
+        this.filtered = Objects.requireNonNull(filtered, "filtered");
+        this.accepts = Objects.requireNonNull(accepts, "accepts");
     }
 
     public PartitionStore<FluidId> store() {
@@ -28,17 +39,17 @@ public final class PartitionFluidOutput implements IOutputHatch {
 
     @Override
     public boolean isFiltered() {
-        return false;
+        return this.filtered.getAsBoolean();
     }
 
     @Override
     public boolean isFilteredToFluid(final FluidId identity) {
-        return false;
+        return this.accepts.test(identity);
     }
 
     @Override
     public OutputHatchType getHatchType() {
-        return OutputHatchType.MECacheUnfiltered;
+        return this.isFiltered() ? OutputHatchType.MECacheFiltered : OutputHatchType.MECacheUnfiltered;
     }
 
     @Override

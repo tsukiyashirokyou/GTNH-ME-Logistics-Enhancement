@@ -80,7 +80,7 @@ gtnhmelogisticsenhancement.gui.transfer_disabled=Group transfer disabled
 gtnhmelogisticsenhancement.bus.name=Distributed ME Output Bus
 gtnhmelogisticsenhancement.bus.description=GT item output with independent long-count partitions; normal admission N=1..16.
 gtnhmelogisticsenhancement.bus.card_note=Capacity token only: original cell contents stay inside the card and are not imported.
-gtnhmelogisticsenhancement.bus.emergency_note=Only protected actual GT transactions may exceed admission limits; Eye of Harmony unverified.
+gtnhmelogisticsenhancement.bus.emergency_note=New input obeys filters and quotas; emergency protection preserves accepted commit conflicts only.
 gtnhmelogisticsenhancement.bus.partitions=Partitions N
 gtnhmelogisticsenhancement.bus.period=Period (s)
 gtnhmelogisticsenhancement.bus.network=ME active: %s | powered: %s | booting: %s
@@ -100,7 +100,7 @@ gtnhmelogisticsenhancement.bus.legacy=Retained after shrink; contents remain del
 gtnhmelogisticsenhancement.hatch.name=Distributed ME Output Hatch
 gtnhmelogisticsenhancement.hatch.description=Partitioned GT fluid output; one ME channel, native powered insertion
 gtnhmelogisticsenhancement.hatch.card_note=Optional finite native fluid cell; its contents stay inside the cell
-gtnhmelogisticsenhancement.hatch.emergency_note=Only protected actual GT transactions may exceed normal admission limits
+gtnhmelogisticsenhancement.hatch.emergency_note=New input obeys filters and quotas; protection preserves accepted commit conflicts only.
 gtnhmelogisticsenhancement.hatch.partitions=Partitions N
 gtnhmelogisticsenhancement.hatch.period=Period (s)
 gtnhmelogisticsenhancement.hatch.network=ME active: %s | power: %s | booting: %s
