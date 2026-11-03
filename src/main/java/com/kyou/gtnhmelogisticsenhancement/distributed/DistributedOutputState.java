@@ -45,6 +45,7 @@ public class DistributedOutputState<K> {
     private int period = MIN_PERIOD;
     private int elapsed;
     private List<K> outputRound;
+    private K roundFirst;
     private int roundPosition;
     private boolean stopped;
     private boolean busy;
@@ -103,11 +104,13 @@ public class DistributedOutputState<K> {
     public void stop() {
         this.stopped = true;
         this.outputRound = null;
+        this.roundFirst = null;
     }
 
     public void isolate(final String reason) {
         this.fault = reason;
         this.outputRound = null;
+        this.roundFirst = null;
     }
 
     public void setPeriod(final int value) {
@@ -161,6 +164,7 @@ public class DistributedOutputState<K> {
         if (this.outputRound == null) {
             if (this.store.identityCount() == 0) return false;
             this.outputRound = this.store.outputSnapshot();
+            this.roundFirst = this.outputRound.get(0);
             this.roundPosition = 0;
         }
         boolean changed = false;
@@ -172,7 +176,10 @@ public class DistributedOutputState<K> {
                 final K identity = this.outputRound.set(this.roundPosition++, null);
                 this.store.advanceOutputCursor(identity);
                 final long known = this.store.quantity(identity);
-                if (known <= 0) continue;
+                if (known <= 0) {
+                    if (identity.equals(this.roundFirst)) this.roundFirst = null;
+                    continue;
+                }
                 final int amount = (int) Math.min(Integer.MAX_VALUE, known);
                 final long version = this.store.cacheVersion();
                 this.flight = new NBTTagCompound();
@@ -189,9 +196,18 @@ public class DistributedOutputState<K> {
                 final long accepted = amount - left;
                 if (accepted != 0) {
                     this.store.remove(identity, accepted);
+                    if (identity.equals(this.roundFirst) && this.store.quantity(identity) == 0) this.roundFirst = null;
                     changed = true;
                 }
                 this.flight = null;
+                markDirty.run();
+            }
+            if (!this.stopped && this.fault()
+                .isEmpty() && this.roundPosition >= this.outputRound.size() && this.roundFirst != null) {
+                // Visiting every identity restores their original order. Rotate the start as well so one large
+                // offer cannot claim the Grid's entire Tick allowance first in every subsequent round.
+                this.store.advanceOutputCursor(this.roundFirst);
+                this.roundFirst = null;
                 markDirty.run();
             }
         } catch (RuntimeException uncertain) {
@@ -202,6 +218,7 @@ public class DistributedOutputState<K> {
             this.busy = false;
             if (this.locked() || this.roundPosition >= this.outputRound.size()) {
                 this.outputRound = null;
+                this.roundFirst = null;
                 this.roundPosition = 0;
                 this.elapsed = 0;
             }

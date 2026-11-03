@@ -40,6 +40,7 @@ public class DistributedHatchIntegrationTest {
                 { "shrinkingPolicyRetainsOldStockAndAllowsDrain" }, { "nativePoweredInsertUsesFluidEnergyUnits" },
                 { "distributedEnergySharesBudgetBetweenItemsAndFluids" },
                 { "distributedEnergyChargesActualReceiptsAndPreservesStock" },
+                { "overQuotaFluidsRotatePastAFullFirstTankWithoutRecyclingEnergy" },
                 { "distributedEnergyChecksTopologyAndSynchronousReentry" },
                 { "distributedEnergyRenewsOnServerTickAndRetainsUncertainFlight" },
                 { "rawInvalidReceiptsAndFluidNbtChangesAreIsolated" },

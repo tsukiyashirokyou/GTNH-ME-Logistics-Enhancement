@@ -946,6 +946,96 @@ public class DistributedHatchFixture {
         }
     }
 
+    public void overQuotaFluidsRotatePastAFullFirstTankWithoutRecyclingEnergy() {
+        final Fluid second = new Fluid("distributed_hatch_fairness_second");
+        assertTrue(FluidRegistry.registerFluid(second));
+        final FluidId firstId = FluidId.create(new FluidStack(FLUID, 1));
+        final FluidId secondId = FluidId.create(new FluidStack(second, 1));
+        final double previousMultiplier = appeng.api.config.PowerMultiplier.CONFIG.multiply(1);
+        try {
+            for (final double multiplier : new double[] { 1, 2.5 }) {
+                appeng.api.config.PowerMultiplier.CONFIG.multiplier = multiplier;
+                DistributedFluidHatchState state = new DistributedFluidHatchState();
+                final PartitionStore<FluidId>.Transaction transaction = state.store()
+                    .transaction(true);
+                assertTrue(transaction.offer(firstId, 1000000));
+                assertTrue(transaction.offer(secondId, 1000000));
+                transaction.commit();
+                assertTrue(
+                    state.store()
+                        .quantity(firstId)
+                        > state.store()
+                            .quota());
+                assertTrue(
+                    state.store()
+                        .quantity(secondId)
+                        > state.store()
+                            .quota());
+                final Object shared = new Object();
+                final GridPower power = new GridPower();
+                final long[] received = { 0, 0 };
+                final Set<FluidId> attempted = new HashSet<>();
+                final appeng.api.storage.IMEInventory<IAEFluidStack> monitor = energyDestination(
+                    FLUID_STACK_TYPE,
+                    input -> {
+                        final FluidId identity = FluidId.create(input.getFluidStack());
+                        assertTrue(identity.equals(firstId) || identity.equals(secondId));
+                        attempted.add(identity);
+                        final int index = identity.equals(firstId) ? 0 : 1;
+                        final long accepted = Math.min(input.getStackSize(), 1501 - received[index]);
+                        return accepted == input.getStackSize() ? null
+                            : input.copy()
+                                .setStackSize(input.getStackSize() - accepted);
+                    });
+                final appeng.api.networking.security.MachineSource source = new appeng.api.networking.security.MachineSource(
+                    hatch());
+                for (int round = 0; round < 4; round++) {
+                    DistributedOutputEnergy.clear();
+                    power.stored = 1000; // External recharge before the next output round.
+                    attempted.clear();
+                    for (int tick = 1; tick < state.period(); tick++) assertFalse(state.tick());
+                    assertTrue(state.tick());
+                    state.flush((identity, amount) -> {
+                        final IAEFluidStack offered = DistributedFluidBridge.offer(identity, amount);
+                        assertNotNull(offered);
+                        assertEquals(1000, offered.getAmountPerUnit());
+                        final IAEFluidStack result = DistributedOutputEnergy
+                            .insert(shared, power.grid, () -> true, monitor, offered, FLUID_STACK_TYPE, source);
+                        final long remaining = result == null ? 0 : result.getStackSize();
+                        final int index = identity.equals(firstId) ? 0 : 1;
+                        received[index] += amount - remaining;
+                        return result == null ? null : new DistributedOutputState.Remainder<>(identity, remaining);
+                    }, () -> {});
+                    assertFalse(state.locked());
+                    assertFalse(state.roundActive());
+                    // Even a refusal consumes the gross allowance. Only the rotated first identity reaches AE.
+                    assertEquals(Collections.singleton(round % 2 == 0 ? firstId : secondId), attempted);
+                    assertEquals(
+                        1000000 - received[0],
+                        state.store()
+                            .quantity(firstId));
+                    assertEquals(
+                        1000000 - received[1],
+                        state.store()
+                            .quantity(secondId));
+                    if (round == 0) {
+                        state = DistributedFluidHatchState.read(state.write(), null);
+                        assertEquals(
+                            secondId,
+                            state.store()
+                                .outputCursor());
+                    }
+                }
+                assertEquals(1501, received[0]);
+                assertEquals(1501, received[1]);
+                assertEquals(4 * multiplier, power.spent, 0); // Two native 1000-unit charges per fluid.
+            }
+        } finally {
+            appeng.api.config.PowerMultiplier.CONFIG.multiplier = previousMultiplier;
+            DistributedOutputEnergy.clear();
+        }
+    }
+
     public void distributedEnergyChecksTopologyAndSynchronousReentry() {
         DistributedOutputEnergy.clear();
         final GridPower power = new GridPower();
@@ -1162,7 +1252,7 @@ public class DistributedHatchFixture {
             restored.store()
                 .totalQuantity());
         assertEquals(
-            id(0),
+            id(1), // A completed round rotates its start, including after reload.
             restored.store()
                 .nextOutputBatch(1)
                 .get(0).identity);

@@ -3,6 +3,8 @@ package com.kyou.gtnhmelogisticsenhancement.distributed;
 import static org.junit.Assert.*;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -64,6 +66,9 @@ public class DistributedOutputScheduleTest {
         final java.util.List<?> snapshot = (java.util.List<?>) field.get(state);
         assertEquals(17, snapshot.size());
         for (int i = 0; i < 16; i++) assertNull(snapshot.get(i));
+        final java.lang.reflect.Field first = DistributedOutputState.class.getDeclaredField("roundFirst");
+        first.setAccessible(true);
+        assertNull(first.get(state));
         assertEquals("K16", snapshot.get(16));
         assertEquals(
             1,
@@ -184,6 +189,131 @@ public class DistributedOutputScheduleTest {
         assertFalse(state.roundActive());
         for (int tick = 1; tick < 40; tick++) assertFalse(state.tick());
         assertTrue(state.tick());
+    }
+
+    @Test
+    public void overQuotaIdentityThatFillsOneTargetSlotCannotStarveTheNextIdentity() {
+        final DistributedOutputState<String> state = state();
+        receive(state, "sulfur", 5000);
+        receive(state, "iron", 5000);
+        final Map<String, Long> delivered = new LinkedHashMap<>();
+        final DistributedEnergyBudget budget = new DistributedEnergyBudget();
+        final Object grid = new Object();
+        for (int round = 0; round < 4; round++) {
+            budget.clear();
+            awaitStart(state);
+            state.flush((identity, amount) -> {
+                final long authorized = budget.authorize(grid, fixedPower(), amount, 1, 1);
+                final long before = delivered.getOrDefault(identity, 0L);
+                final long accepted = Math.min(authorized, 64 - before);
+                delivered.put(identity, before + accepted);
+                return new DistributedOutputState.Remainder<>(identity, amount - accepted);
+            }, () -> {});
+            assertFalse(state.roundActive());
+            assertFalse(state.locked());
+        }
+        assertEquals(Long.valueOf(64), delivered.get("sulfur"));
+        assertEquals(Long.valueOf(64), delivered.get("iron"));
+        assertEquals(
+            4936,
+            state.store()
+                .quantity("sulfur"));
+        assertEquals(
+            4936,
+            state.store()
+                .quantity("iron"));
+    }
+
+    @Test
+    public void continuouslyAcceptedFirstIdentityCannotMonopolizeEveryRoundsPowerAllowance() {
+        final DistributedOutputState<String> state = state();
+        receive(state, "first", 5000);
+        receive(state, "second", 5000);
+        final Map<String, Long> delivered = new LinkedHashMap<>();
+        final DistributedEnergyBudget budget = new DistributedEnergyBudget();
+        final Object grid = new Object();
+        for (int round = 0; round < 4; round++) {
+            budget.clear();
+            awaitStart(state);
+            state.flush((identity, amount) -> {
+                final long accepted = budget.authorize(grid, fixedPower(), amount, 1, 1);
+                delivered.put(identity, delivered.getOrDefault(identity, 0L) + accepted);
+                return new DistributedOutputState.Remainder<>(identity, amount - accepted);
+            }, () -> {});
+        }
+        assertEquals(Long.valueOf(200), delivered.get("first"));
+        assertEquals(Long.valueOf(200), delivered.get("second"));
+    }
+
+    private static DistributedEnergyBudget.Power fixedPower() {
+        return new DistributedEnergyBudget.Power() {
+
+            @Override
+            public boolean valid() {
+                return true;
+            }
+
+            @Override
+            public boolean infinite() {
+                return false;
+            }
+
+            @Override
+            public double stored() {
+                return 1000;
+            }
+
+            @Override
+            public double capacity() {
+                return 1000;
+            }
+
+            @Override
+            public double idle() {
+                return 0;
+            }
+
+            @Override
+            public double available(final double request) {
+                return Math.min(request, 1000);
+            }
+        };
+    }
+
+    @Test
+    public void completedRoundsPersistTheRotatedStartIncludingRoundsSpanningSeveralTicks() {
+        for (final int count : new int[] { 2, 17, 32 }) {
+            final DistributedOutputState<String> state = state();
+            for (int i = 0; i < count; i++) receive(state, "K" + i, 5000);
+            awaitStart(state);
+            do {
+                state.flush((identity, amount) -> new DistributedOutputState.Remainder<>(identity, amount), () -> {});
+            } while (state.roundActive() && state.tick());
+            assertEquals(
+                "K1",
+                state.store()
+                    .outputCursor());
+            final DistributedOutputState<String> restored = state();
+            restored.readState(state.write(), null);
+            assertEquals(
+                "K1",
+                restored.store()
+                    .outputCursor());
+            final java.util.List<String> visited = new java.util.ArrayList<>();
+            awaitStart(restored);
+            do {
+                restored.flush((identity, amount) -> {
+                    visited.add(identity);
+                    return new DistributedOutputState.Remainder<>(identity, amount);
+                }, () -> {});
+            } while (restored.roundActive() && restored.tick());
+            assertEquals("K1", visited.get(0));
+            assertEquals(count, visited.size());
+            assertEquals(
+                count == 2 ? "K0" : "K2",
+                restored.store()
+                    .outputCursor());
+        }
     }
 
     @Test

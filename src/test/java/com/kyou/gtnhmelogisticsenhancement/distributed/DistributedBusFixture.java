@@ -263,7 +263,7 @@ public class DistributedBusFixture {
                 + ", maxIdentitiesPerFlush=16; no Minecraft world/MSPT measurement");
         final DistributedItemBusState restored = DistributedItemBusState.read(saved, null);
         assertEquals(
-            id(0),
+            id(1), // A completed round rotates its start, including after reload.
             restored.store()
                 .nextOutputBatch(16)
                 .get(0).identity);
