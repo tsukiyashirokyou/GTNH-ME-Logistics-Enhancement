@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.junit.Test;
 
+import com.kyou.gtnhmelogisticsenhancement.tile.DriveSlotLayout;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TargetRegistry;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferTarget;
 
@@ -20,7 +21,14 @@ public class DriveGuiLogicTest {
     private final UUID second = this.context.registry.register(new TransferTarget(UUID.randomUUID(), 0, 20, 64, 0));
 
     private DriveGuiAction action(DriveGuiAction.Kind kind, int group, UUID target, String text, String number) {
-        return new DriveGuiAction(kind, this.context.session, this.context.revision, group, target, text, number);
+        return new DriveGuiAction(
+            kind,
+            this.context.session,
+            this.context.settings.revision,
+            group,
+            target,
+            text,
+            number);
     }
 
     private String apply(DriveGuiAction.Kind kind, int group, UUID target, String text, String number) {
@@ -47,7 +55,7 @@ public class DriveGuiLogicTest {
     public void pageSelectionDoesNotChangeRoutingOrConfiguration() {
         assertEquals("ok", this.apply(DriveGuiAction.Kind.PAGE, 7, null, "", ""));
         assertEquals(7, this.context.page);
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
         assertEquals(
             TargetRegistry.Mode.UNASSIGNED,
             this.context.registry.getRoute(7)
@@ -60,7 +68,7 @@ public class DriveGuiLogicTest {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.PAGE, group, null, "", ""));
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.AUTOMATIC, group, null, "", ""));
         }
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
@@ -68,7 +76,7 @@ public class DriveGuiLogicTest {
         final DriveGuiAction request = new DriveGuiAction(
             DriveGuiAction.Kind.DELETE_TARGET,
             UUID.randomUUID(),
-            this.context.revision,
+            this.context.settings.revision,
             0,
             this.first,
             "",
@@ -86,13 +94,13 @@ public class DriveGuiLogicTest {
         for (DriveGuiAction.Kind kind : DriveGuiAction.Kind.values()) {
             assertEquals("denied", this.apply(kind, 0, this.first, "READ", "60"));
         }
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
     public void staleConfigurationCannotOverwriteNewerData() {
         final DriveGuiAction request = this.action(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "old edit", "1");
-        this.context.revision++;
+        this.context.settings.revision++;
         assertEquals("stale", DriveGuiLogic.apply(request, this.context));
         assertEquals(
             "ME Interface",
@@ -109,7 +117,7 @@ public class DriveGuiLogicTest {
                 this.apply(kind, 1, this.first, "READ", "60"));
         }
         assertEquals(1, this.context.page);
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
@@ -183,7 +191,7 @@ public class DriveGuiLogicTest {
     public void periodAcceptsBothBoundsAndDefault() {
         for (String value : new String[] { "1", "60", "86400" }) {
             assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", value));
-            assertEquals(Integer.parseInt(value), this.context.period);
+            assertEquals(Integer.parseInt(value), this.context.settings.periods[0]);
         }
     }
 
@@ -192,8 +200,8 @@ public class DriveGuiLogicTest {
         for (String value : new String[] { "1.5", "1e3", "", " 60", "1\n", "+2" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", value));
         }
-        assertEquals(60, this.context.period);
-        assertEquals(0, this.context.mutations);
+        assertEquals(60, this.context.settings.periods[0]);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
@@ -210,7 +218,7 @@ public class DriveGuiLogicTest {
         for (String value : new String[] { "NO_ACCESS", "RESHUFFLE_ACCESS", "read", "" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.ACCESS, 0, null, value, ""));
         }
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
@@ -227,7 +235,7 @@ public class DriveGuiLogicTest {
             -3,
             this.context.target(this.first)
                 .getPriority());
-        assertEquals(1, this.context.mutations);
+        assertEquals(1, this.context.settings.mutations);
     }
 
     @Test
@@ -250,7 +258,7 @@ public class DriveGuiLogicTest {
         final DriveGuiAction request = this.action(DriveGuiAction.Kind.UPDATE_TARGET, 0, this.first, "new", "5");
         assertEquals("ok", DriveGuiLogic.apply(request, this.context));
         assertEquals("stale", DriveGuiLogic.apply(request, this.context));
-        assertEquals(1, this.context.mutations);
+        assertEquals(1, this.context.settings.mutations);
     }
 
     @Test
@@ -303,9 +311,9 @@ public class DriveGuiLogicTest {
     @Test
     public void serverNormalizesOrdinaryInputWithoutRelyingOnTheClient() {
         assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", "9223372036854775808"));
-        assertEquals(86400, this.context.period);
+        assertEquals(86400, this.context.settings.periods[0]);
         assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", "-9223372036854775809"));
-        assertEquals(1, this.context.period);
+        assertEquals(1, this.context.settings.periods[0]);
         final String alias = String.join("", java.util.Collections.nCopies(80, "x"));
         assertEquals(
             "ok",
@@ -337,7 +345,7 @@ public class DriveGuiLogicTest {
         final int[] expected = { 0, -1, Integer.MIN_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE };
         for (int index = 0; index < inputs.length; index++) {
             assertEquals("ok", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 0, null, "", inputs[index]));
-            assertEquals(expected[index], this.context.storagePriority);
+            assertEquals(expected[index], this.context.settings.storagePriorities[0]);
             assertEquals(
                 123,
                 this.context.target(this.first)
@@ -347,9 +355,9 @@ public class DriveGuiLogicTest {
                 this.context.registry.getRoute(3)
                     .getTargetId());
             assertEquals(AccessRestriction.READ_WRITE, this.context.access);
-            assertEquals(60, this.context.period);
+            assertEquals(60, this.context.settings.periods[0]);
         }
-        assertEquals(inputs.length, this.context.mutations);
+        assertEquals(inputs.length, this.context.settings.mutations);
     }
 
     @Test
@@ -358,8 +366,8 @@ public class DriveGuiLogicTest {
             "999999999999999999999999999999999" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 0, null, "", input));
         }
-        assertEquals(0, this.context.storagePriority);
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.storagePriorities[0]);
+        assertEquals(0, this.context.settings.mutations);
     }
 
     @Test
@@ -373,8 +381,8 @@ public class DriveGuiLogicTest {
         this.context.locked = false;
         assertEquals("ok", DriveGuiLogic.apply(original, this.context));
         assertEquals("stale", DriveGuiLogic.apply(original, this.context));
-        assertEquals(-42, this.context.storagePriority);
-        assertEquals(1, this.context.mutations);
+        assertEquals(-42, this.context.settings.storagePriorities[0]);
+        assertEquals(1, this.context.settings.mutations);
     }
 
     @Test
@@ -389,9 +397,9 @@ public class DriveGuiLogicTest {
             assertEquals(100, this.context.registry.getFillPercent(0));
             assertEquals(route, this.context.registry.getRoute(4));
         }
-        assertEquals(60, this.context.period);
+        assertEquals(60, this.context.settings.periods[0]);
         assertEquals(AccessRestriction.READ_WRITE, this.context.access);
-        assertEquals(0, this.context.storagePriority);
+        assertEquals(0, this.context.settings.storagePriorities[0]);
     }
 
     @Test
@@ -406,7 +414,7 @@ public class DriveGuiLogicTest {
         assertEquals("ok", DriveGuiLogic.apply(request, this.context));
         assertEquals("stale", DriveGuiLogic.apply(request, this.context));
         assertEquals(80, this.context.registry.getFillPercent(7));
-        assertEquals(1, this.context.mutations);
+        assertEquals(1, this.context.settings.mutations);
     }
 
     @Test
@@ -418,22 +426,127 @@ public class DriveGuiLogicTest {
             "99999999999999999999999999999999999" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.FILL_PERCENT, 0, null, "", number));
         }
-        assertEquals(0, this.context.mutations);
+        assertEquals(0, this.context.settings.mutations);
         assertEquals(100, this.context.registry.getFillPercent(0));
+    }
+
+    @Test
+    public void storagePrioritiesAndPeriodsAreIndependentForEveryGroup() {
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            assertEquals("ok", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, group, null, "", "-" + (group + 1)));
+            assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, group, null, "", Integer.toString(group + 1)));
+            for (int checked = 0; checked < DriveSlotLayout.GROUP_COUNT; checked++) {
+                assertEquals(checked <= group ? -checked - 1 : 0, this.context.settings.storagePriorities[checked]);
+                assertEquals(checked <= group ? checked + 1 : 60, this.context.settings.periods[checked]);
+                assertEquals(
+                    TargetRegistry.Mode.UNASSIGNED,
+                    this.context.registry.getRoute(checked)
+                        .getMode());
+                assertEquals(100, this.context.registry.getFillPercent(checked));
+            }
+        }
+        assertEquals(AccessRestriction.READ_WRITE, this.context.access);
+    }
+
+    @Test
+    public void forgedStoragePriorityAndPeriodGroupsCannotMutateAnyConfiguration() {
+        for (final int group : new int[] { Integer.MIN_VALUE, -1, DriveSlotLayout.GROUP_COUNT, Integer.MAX_VALUE }) {
+            assertEquals("invalid", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, group, null, "", "12"));
+            assertEquals("invalid", this.apply(DriveGuiAction.Kind.PERIOD, group, null, "", "12"));
+        }
+        assertEquals(0, this.context.settings.mutations);
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            assertEquals(0, this.context.settings.storagePriorities[group]);
+            assertEquals(60, this.context.settings.periods[group]);
+        }
+    }
+
+    @Test
+    public void delayedGroupSettingsKeepTheirOriginalGroupAfterPageChanges() {
+        for (final DriveGuiAction.Kind kind : new DriveGuiAction.Kind[] { DriveGuiAction.Kind.STORAGE_PRIORITY,
+            DriveGuiAction.Kind.PERIOD }) {
+            final Context viewer = new Context();
+            final DriveGuiAction pending = new DriveGuiAction(
+                kind,
+                viewer.session,
+                viewer.revision(),
+                3,
+                null,
+                "",
+                "25");
+            assertEquals(
+                "ok",
+                DriveGuiLogic.apply(
+                    new DriveGuiAction(DriveGuiAction.Kind.PAGE, viewer.session, viewer.revision(), 6, null, "", ""),
+                    viewer));
+            assertEquals("ok", DriveGuiLogic.apply(pending, viewer));
+            assertEquals(6, viewer.page);
+            assertEquals(kind == DriveGuiAction.Kind.PERIOD ? 25 : 60, viewer.settings.periods[3]);
+            assertEquals(kind == DriveGuiAction.Kind.STORAGE_PRIORITY ? 25 : 0, viewer.settings.storagePriorities[3]);
+            assertEquals(60, viewer.settings.periods[6]);
+            assertEquals(0, viewer.settings.storagePriorities[6]);
+            assertEquals("stale", DriveGuiLogic.apply(pending, viewer));
+            assertEquals(1, viewer.settings.mutations);
+        }
+    }
+
+    @Test
+    public void concurrentPlayersShareConfigurationButRetainSessionAndRevisionProtection() {
+        final Context other = new Context(this.context.settings);
+        other.page = 2;
+        final DriveGuiAction pending = new DriveGuiAction(
+            DriveGuiAction.Kind.PERIOD,
+            other.session,
+            other.revision(),
+            2,
+            null,
+            "",
+            "90");
+        assertEquals("ok", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 7, null, "", "-42"));
+        assertEquals("stale", DriveGuiLogic.apply(pending, other));
+        assertEquals(60, other.settings.periods[2]);
+        assertEquals(
+            "denied",
+            DriveGuiLogic.apply(
+                new DriveGuiAction(
+                    DriveGuiAction.Kind.PERIOD,
+                    this.context.session,
+                    other.revision(),
+                    2,
+                    null,
+                    "",
+                    "90"),
+                other));
+        assertEquals(
+            "ok",
+            DriveGuiLogic.apply(
+                new DriveGuiAction(DriveGuiAction.Kind.PERIOD, other.session, other.revision(), 2, null, "", "90"),
+                other));
+        assertEquals(90, this.context.settings.periods[2]);
+        assertEquals(-42, this.context.settings.storagePriorities[7]);
+        assertEquals(0, this.context.page);
+        assertEquals(2, other.page);
+        assertEquals(2, this.context.settings.mutations);
     }
 
     private static final class Context implements DriveGuiLogic.Context {
 
         final UUID session = UUID.randomUUID();
-        final TargetRegistry registry = new TargetRegistry();
-        long revision = 1;
+        final Settings settings;
+        final TargetRegistry registry;
         boolean canUse = true;
         boolean locked;
         int page;
-        int period = 60;
-        int storagePriority;
-        int mutations;
         AccessRestriction access = AccessRestriction.READ_WRITE;
+
+        Context() {
+            this(new Settings());
+        }
+
+        Context(final Settings settings) {
+            this.settings = settings;
+            this.registry = settings.registry;
+        }
 
         @Override
         public boolean canUse() {
@@ -452,7 +565,7 @@ public class DriveGuiLogicTest {
 
         @Override
         public long revision() {
-            return this.revision;
+            return this.settings.revision;
         }
 
         @Override
@@ -477,8 +590,8 @@ public class DriveGuiLogicTest {
         }
 
         @Override
-        public void setPeriod(int seconds) {
-            this.period = seconds;
+        public void setPeriod(int group, int seconds) {
+            this.settings.periods[group] = seconds;
             this.changed();
         }
 
@@ -489,8 +602,8 @@ public class DriveGuiLogicTest {
         }
 
         @Override
-        public void setStoragePriority(int priority) {
-            this.storagePriority = priority;
+        public void setStoragePriority(int group, int priority) {
+            this.settings.storagePriorities[group] = priority;
             this.changed();
         }
 
@@ -523,8 +636,21 @@ public class DriveGuiLogicTest {
         }
 
         private void changed() {
-            this.revision++;
-            this.mutations++;
+            this.settings.revision++;
+            this.settings.mutations++;
+        }
+    }
+
+    private static final class Settings {
+
+        final TargetRegistry registry = new TargetRegistry();
+        final int[] periods = new int[DriveSlotLayout.GROUP_COUNT];
+        final int[] storagePriorities = new int[DriveSlotLayout.GROUP_COUNT];
+        long revision = 1;
+        int mutations;
+
+        Settings() {
+            java.util.Arrays.fill(this.periods, 60);
         }
     }
 }

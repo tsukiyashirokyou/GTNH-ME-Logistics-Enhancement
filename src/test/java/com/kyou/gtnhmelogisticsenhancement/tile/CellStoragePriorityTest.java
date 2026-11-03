@@ -4,6 +4,7 @@ import static com.kyou.gtnhmelogisticsenhancement.tile.CellHandlerCacheTest.TYPE
 import static com.kyou.gtnhmelogisticsenhancement.tile.CellHandlerCacheTest.assertCount;
 import static com.kyou.gtnhmelogisticsenhancement.tile.CellHandlerCacheTest.extract;
 import static com.kyou.gtnhmelogisticsenhancement.tile.CellHandlerCacheTest.stack;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -149,12 +150,14 @@ public class CellStoragePriorityTest {
             }
             final int constructions = drive.constructions;
             drive.start();
-            drive.setPriority(Integer.MIN_VALUE);
+            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+                drive.setStoragePriority(group, Integer.MIN_VALUE + group);
+            }
             drive.applyPendingStoragePriority();
             for (int slot = 0; slot < 64; slot++) {
                 final IAEStackType type = TYPES[slot % TYPES.length];
                 assertEquals(
-                    Integer.MIN_VALUE,
+                    Integer.MIN_VALUE + DriveSlotLayout.group(slot),
                     drive.exposed(slot, type)
                         .getPriority());
                 assertEquals(
@@ -269,7 +272,118 @@ public class CellStoragePriorityTest {
         assertEquals(-567, drive.getPriority());
         final NBTTagCompound saved = new NBTTagCompound();
         drive.writeStoragePriority(saved);
-        assertEquals(-567, saved.getInteger("storagePriority"));
+        for (final int priority : saved.getIntArray("storagePriorities")) {
+            assertEquals(-567, priority);
+        }
+    }
+
+    @Test
+    public void groupPrioritiesRoundTripAndLegacyPriorityMigratesToEveryGroup() throws Exception {
+        final Drive original = new Drive();
+        final int[] priorities = { Integer.MIN_VALUE, -100, -1, 0, 1, 7, 100, Integer.MAX_VALUE };
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            original.setStoragePriority(group, priorities[group]);
+        }
+        final NBTTagCompound tag = new NBTTagCompound();
+        original.writeStoragePriority(tag);
+        assertArrayEquals(priorities, tag.getIntArray("storagePriorities"));
+        final Drive reloaded = new Drive();
+        reloaded.readStoragePriority(tag);
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            final int slot = DriveSlotLayout.slot(group, 0);
+            reloaded.install(slot, TYPES[0], 100);
+            assertEquals(priorities[group], reloaded.getStoragePriority(group));
+            assertEquals(
+                priorities[group],
+                reloaded.exposed(slot, TYPES[0])
+                    .getPriority());
+        }
+        final NBTTagCompound legacy = new NBTTagCompound();
+        legacy.setInteger("storagePriority", -567);
+        final Drive migrated = new Drive();
+        migrated.readStoragePriority(legacy);
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            assertEquals(-567, migrated.getStoragePriority(group));
+        }
+        migrated.setStoragePriority(7, 42);
+        assertEquals(-567, migrated.getStoragePriority(0));
+        assertEquals(42, migrated.getStoragePriority(7));
+    }
+
+    @Test
+    public void groupOrderControlsNativeNetworkInjectionAndExtractionWithinOneDrive() throws Exception {
+        for (final IAEStackType type : TYPES) {
+            final Drive drive = new Drive();
+            drive.install(0, type, 100);
+            drive.install(8, type, 100);
+            final IMEInventory first = drive.getNativeCellHandler(0);
+            final IMEInventory second = drive.getNativeCellHandler(8);
+            drive.start();
+            drive.setStoragePriority(0, -100);
+            drive.setStoragePriority(1, 100);
+            final NBTTagCompound queued = new NBTTagCompound();
+            drive.writeStoragePriority(queued);
+            assertArrayEquals(new int[] { -100, 100, 0, 0, 0, 0, 0, 0 }, queued.getIntArray("storagePriorities"));
+            drive.applyPendingStoragePriority();
+            assertEquals(1, drive.events);
+            final NetworkInventoryHandler network = drive.ordered.get(type);
+            assertNull(network.injectItems(stack(type, 20), Actionable.MODULATE, new BaseActionSource()));
+            assertCount(drive, 0, type, 100);
+            assertCount(drive, 8, type, 120);
+            assertEquals(10, extract(network, type, 10));
+            assertCount(drive, 0, type, 90);
+            assertCount(drive, 8, type, 120);
+            assertSame(first, drive.getNativeCellHandler(0));
+            assertSame(second, drive.getNativeCellHandler(8));
+        }
+    }
+
+    @Test
+    public void reentrantUpdatesAcrossGroupsCommitAsANewBatch() throws Exception {
+        final Drive drive = new Drive();
+        drive.start();
+        drive.onEvent = () -> {
+            assertEquals(10, drive.getStoragePriority(0));
+            assertEquals(20, drive.getStoragePriority(1));
+            drive.setStoragePriority(0, -10);
+            drive.setStoragePriority(1, -20);
+            drive.applyPendingStoragePriority();
+            assertEquals(20, drive.getStoragePriority(1));
+        };
+        drive.setStoragePriority(0, 10);
+        drive.setStoragePriority(1, 20);
+        drive.applyPendingStoragePriority();
+        assertTrue(drive.isTransferConfigurationLocked());
+        drive.onEvent = () -> {};
+        drive.applyPendingStoragePriority();
+        assertEquals(-10, drive.getStoragePriority(0));
+        assertEquals(-20, drive.getStoragePriority(1));
+        assertEquals(0, drive.getStoragePriority(2));
+        assertEquals(2, drive.events);
+        assertFalse(drive.isTransferConfigurationLocked());
+    }
+
+    @Test
+    public void malformedGroupedPriorityNeverFallsBackToAStaleSharedValue() throws Exception {
+        final NBTTagCompound damaged = new NBTTagCompound();
+        damaged.setInteger("storagePriority", 999);
+        for (int[] bad : new int[][] { {}, { 1 }, new int[9] }) {
+            damaged.setIntArray("storagePriorities", bad);
+            final Drive drive = new Drive();
+            drive.readStoragePriority(damaged);
+            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+                assertEquals(0, drive.getStoragePriority(group));
+            }
+        }
+        damaged.setString("storagePriorities", "untrusted");
+        final Drive drive = new Drive();
+        drive.readStoragePriority(damaged);
+        assertEquals(0, drive.getStoragePriority(0));
+    }
+
+    @Test(expected = IndexOutOfBoundsException.class)
+    public void invalidPriorityGroupIsRejected() throws Exception {
+        new Drive().setStoragePriority(DriveSlotLayout.GROUP_COUNT, 100);
     }
 
     @Test

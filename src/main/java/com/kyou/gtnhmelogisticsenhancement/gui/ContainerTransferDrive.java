@@ -53,7 +53,8 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         this.tile = tile;
         this.owner = player;
         this.deviceId = tile.getBindingIdentity();
-        this.cells = player.worldObj.isRemote ? new InventoryBasic("Transfer cells", false, 64) : tile;
+        this.cells = player.worldObj.isRemote ? new InventoryBasic("Transfer cells", false, DriveSlotLayout.TOTAL_SLOTS)
+            : tile;
         for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {
             this.addSlotToContainer(new CellSlot(slot));
         }
@@ -121,7 +122,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         // A newly visible page may have changed while hidden; force its eight slots to refresh.
         if (!this.owner.worldObj.isRemote) {
             for (final ICrafting listener : this.crafters) {
-                for (int index = 0; index < 8; index++) {
+                for (int index = 0; index < DriveSlotLayout.SLOTS_PER_GROUP; index++) {
                     final int slot = DriveSlotLayout.slot(group, index);
                     listener.sendSlotContents(this, slot, this.cells.getStackInSlot(slot));
                 }
@@ -130,9 +131,11 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     }
 
     private void positionSlots() {
-        for (int index = 0; index < 64; index++) {
+        for (int index = 0; index < DriveSlotLayout.TOTAL_SLOTS; index++) {
             final Slot slot = this.getSlot(index);
-            slot.xDisplayPosition = DriveGuiLogic.visibleSlot(index, this.page) ? 18 + index % 8 * 18 : -10000;
+            slot.xDisplayPosition = DriveGuiLogic.visibleSlot(index, this.page)
+                ? 18 + DriveSlotLayout.indexInGroup(index) * 18
+                : -10000;
             slot.yDisplayPosition = DriveGuiLogic.visibleSlot(index, this.page) ? 47 : -10000;
         }
     }
@@ -158,7 +161,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
 
     @Override
     public boolean canDragIntoSlot(final Slot slot) {
-        return slot.slotNumber >= 64 || DriveGuiLogic.visibleSlot(slot.slotNumber, this.page);
+        return slot.slotNumber >= DriveSlotLayout.TOTAL_SLOTS || DriveGuiLogic.visibleSlot(slot.slotNumber, this.page);
     }
 
     @Override
@@ -172,8 +175,9 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         }
         final ItemStack stack = slot.getStack();
         final ItemStack original = stack.copy();
-        if (index < 64) {
-            if (!DriveGuiLogic.visibleSlot(index, this.page) || !this.mergeItemStack(stack, 64, 100, true)) {
+        if (index < DriveSlotLayout.TOTAL_SLOTS) {
+            if (!DriveGuiLogic.visibleSlot(index, this.page)
+                || !this.mergeItemStack(stack, DriveSlotLayout.TOTAL_SLOTS, this.inventorySlots.size(), true)) {
                 return null;
             }
         } else {
@@ -197,7 +201,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         if (!DriveGuiLogic.validGroup(group)) {
             throw new IllegalArgumentException("Invalid cell page");
         }
-        for (int offset = 0; offset < 8 && stack.stackSize > 0; offset++) {
+        for (int offset = 0; offset < DriveSlotLayout.SLOTS_PER_GROUP && stack.stackSize > 0; offset++) {
             final Slot destination = slots.get(DriveSlotLayout.slot(group, offset));
             if (!destination.getHasStack() && destination.isItemValid(stack)) {
                 destination.putStack(stack.splitStack(1));
@@ -210,8 +214,10 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         final List<ItemStack> result = new ArrayList<>();
         for (int index = 0; index < this.inventorySlots.size(); index++) {
             result.add(
-                index >= 64 || DriveGuiLogic.visibleSlot(index, this.page) ? this.getSlot(index)
-                    .getStack() : null);
+                index >= DriveSlotLayout.TOTAL_SLOTS || DriveGuiLogic.visibleSlot(index, this.page)
+                    ? this.getSlot(index)
+                        .getStack()
+                    : null);
         }
         return result;
     }
@@ -229,7 +235,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         }
         // Only compare visible cell NBT and the player inventory; send ordinary vanilla slot deltas.
         for (int index = 0; index < this.inventorySlots.size(); index++) {
-            if (index < 64 && !DriveGuiLogic.visibleSlot(index, this.page)) {
+            if (index < DriveSlotLayout.TOTAL_SLOTS && !DriveGuiLogic.visibleSlot(index, this.page)) {
                 continue;
             }
             final ItemStack current = this.getSlot(index)
@@ -297,14 +303,14 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
 
     private NBTTagCompound configuration() {
         final NBTTagCompound config = new NBTTagCompound();
-        config.setInteger("period", this.tile.getTransferPeriodSeconds());
-        config.setInteger("storagePriority", this.tile.getPriority());
         config.setString(
             "access",
             this.tile.getAccessMode()
                 .name());
-        for (int group = 0; group < 8; group++) {
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
             final TargetRegistry.Route route = this.tile.getTransferGroupRoute(group);
+            config.setInteger("period" + group, this.tile.getTransferPeriodSeconds(group));
+            config.setInteger("storagePriority" + group, this.tile.getStoragePriority(group));
             config.setInteger("fill" + group, this.tile.getTransferGroupFillPercent(group));
             config.setString(
                 "route" + group,
@@ -362,7 +368,7 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
         state.setBoolean("locked", this.isLocked());
         state.setBoolean("recovery", this.tile.hasTransferRecovery());
         boolean configured = false;
-        for (int group = 0; group < 8; group++) {
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
             final TargetRegistry.Route route = this.tile.getTransferGroupRoute(group);
             configured |= route.getMode() == TargetRegistry.Mode.AUTOMATIC
                 || route.getMode() == TargetRegistry.Mode.SPECIFIC && !route.getTargetIds()
@@ -419,8 +425,8 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     }
 
     @Override
-    public void setPeriod(final int seconds) {
-        this.tile.setTransferPeriodSeconds(seconds);
+    public void setPeriod(final int group, final int seconds) {
+        this.tile.setTransferPeriodSeconds(group, seconds);
     }
 
     @Override
@@ -429,8 +435,8 @@ public final class ContainerTransferDrive extends Container implements DriveGuiL
     }
 
     @Override
-    public void setStoragePriority(final int priority) {
-        this.tile.setPriority(priority);
+    public void setStoragePriority(final int group, final int priority) {
+        this.tile.setStoragePriority(group, priority);
     }
 
     @Override

@@ -9,6 +9,8 @@ import java.util.UUID;
 
 import org.junit.Test;
 
+import com.kyou.gtnhmelogisticsenhancement.tile.DriveSlotLayout;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
@@ -171,7 +173,7 @@ public class DriveGuiNetworkTest {
                 DriveGuiAction.Kind.STORAGE_PRIORITY,
                 UUID.randomUUID(),
                 77,
-                0,
+                DriveSlotLayout.GROUP_COUNT - 1,
                 null,
                 "",
                 number);
@@ -184,6 +186,7 @@ public class DriveGuiNetworkTest {
                 assertEquals(DriveGuiAction.Kind.STORAGE_PRIORITY, decoded.action.kind);
                 assertEquals(request.action.session, decoded.action.session);
                 assertEquals(77, decoded.action.revision);
+                assertEquals(DriveSlotLayout.GROUP_COUNT - 1, decoded.action.group);
                 assertNull(decoded.action.target);
                 assertEquals(number, decoded.action.number);
             } finally {
@@ -214,9 +217,34 @@ public class DriveGuiNetworkTest {
     }
 
     @Test
+    public void groupPeriodAndPriorityRequestsPreserveTheirGroupAndRevision() {
+        for (final DriveGuiAction.Kind kind : new DriveGuiAction.Kind[] { DriveGuiAction.Kind.PERIOD,
+            DriveGuiAction.Kind.STORAGE_PRIORITY }) {
+            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+                final DriveGuiNetwork.ActionMessage request = new DriveGuiNetwork.ActionMessage();
+                request.window = 7;
+                request.action = new DriveGuiAction(kind, UUID.randomUUID(), 100 + group, group, null, "", "123");
+                final ByteBuf buffer = Unpooled.buffer();
+                try {
+                    request.toBytes(buffer);
+                    final DriveGuiNetwork.ActionMessage decoded = new DriveGuiNetwork.ActionMessage();
+                    decoded.fromBytes(buffer);
+                    assertEquals(kind, decoded.action.kind);
+                    assertEquals(request.action.session, decoded.action.session);
+                    assertEquals(100 + group, decoded.action.revision);
+                    assertEquals(group, decoded.action.group);
+                    assertEquals("123", decoded.action.number);
+                    assertNull(decoded.action.target);
+                } finally {
+                    buffer.release();
+                }
+            }
+        }
+    }
+
+    @Test
     public void maximumSelectionsAndUnicodeAliasesFitTheNativeSnapshotBudget() {
         final net.minecraft.nbt.NBTTagCompound state = new net.minecraft.nbt.NBTTagCompound();
-        state.setInteger("storagePriority", Integer.MIN_VALUE);
         final net.minecraft.nbt.NBTTagList targets = new net.minecraft.nbt.NBTTagList();
         final net.minecraft.nbt.NBTTagList ids = new net.minecraft.nbt.NBTTagList();
         final java.util.Random random = new java.util.Random(54321);
@@ -240,7 +268,9 @@ public class DriveGuiNetworkTest {
             targets.appendTag(target);
         }
         state.setTag("targets", targets);
-        for (int group = 0; group < 8; group++) {
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            state.setInteger("storagePriority" + group, group % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE);
+            state.setInteger("period" + group, group % 2 == 0 ? 1 : 86400);
             state.setTag("selected" + group, ids.copy());
             state.setString("route" + group, "SPECIFIC");
             state.setInteger("fill" + group, group * 10);

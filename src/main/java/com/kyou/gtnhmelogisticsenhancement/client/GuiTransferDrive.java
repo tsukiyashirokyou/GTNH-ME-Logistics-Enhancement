@@ -16,6 +16,7 @@ import com.kyou.gtnhmelogisticsenhancement.gui.ConfigurationInput;
 import com.kyou.gtnhmelogisticsenhancement.gui.ContainerTransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiAction;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
+import com.kyou.gtnhmelogisticsenhancement.tile.DriveSlotLayout;
 
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
@@ -35,7 +36,9 @@ public final class GuiTransferDrive extends GuiContainer {
     private String selectedId = "";
     private int targetPage;
     private long editorRevision;
+    private int periodGroup;
     private long periodRevision;
+    private int storagePriorityGroup;
     private long storagePriorityRevision;
     private String localError = "";
     private boolean metadataSubmitted;
@@ -57,7 +60,7 @@ public final class GuiTransferDrive extends GuiContainer {
         super.initGui();
         Keyboard.enableRepeatEvents(true);
         this.buttonList.clear();
-        for (int group = 0; group < 8; group++) {
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
             this.button(group, 10 + group * 20, 23, 19, Integer.toString(group + 1));
         }
         this.button(10, 9, 104, 51, tr("unassigned"));
@@ -81,18 +84,8 @@ public final class GuiTransferDrive extends GuiContainer {
         this.storagePriority = this.field(60, 65, 76, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.fillPercent = this.field(108, 80, 31, ConfigurationInput.MAX_NUMBER_LENGTH);
         this.refreshFillEditor();
-        this.period.setText(
-            Integer.toString(
-                this.state()
-                    .getInteger("period")));
-        this.periodRevision = this.state()
-            .getLong("revision");
-        this.storagePriority.setText(
-            Integer.toString(
-                this.state()
-                    .getInteger("storagePriority")));
-        this.storagePriorityRevision = this.state()
-            .getLong("revision");
+        this.refreshPeriodEditor();
+        this.refreshStoragePriorityEditor();
         this.select(this.selectedId);
     }
 
@@ -122,6 +115,28 @@ public final class GuiTransferDrive extends GuiContainer {
                             .getInteger(key)
                         : 100));
         this.fillRevision = this.state()
+            .getLong("revision");
+    }
+
+    private void refreshPeriodEditor() {
+        this.periodGroup = this.state()
+            .getInteger("page");
+        this.period.setText(
+            Integer.toString(
+                this.state()
+                    .getInteger("period" + this.periodGroup)));
+        this.periodRevision = this.state()
+            .getLong("revision");
+    }
+
+    private void refreshStoragePriorityEditor() {
+        this.storagePriorityGroup = this.state()
+            .getInteger("page");
+        this.storagePriority.setText(
+            Integer.toString(
+                this.state()
+                    .getInteger("storagePriority" + this.storagePriorityGroup)));
+        this.storagePriorityRevision = this.state()
             .getLong("revision");
     }
 
@@ -189,21 +204,19 @@ public final class GuiTransferDrive extends GuiContainer {
             this.metadataSubmitted = false;
             this.select(this.selectedId);
         }
-        if (!this.period.isFocused()) {
-            this.period.setText(
-                Integer.toString(
-                    this.state()
-                        .getInteger("period")));
-            this.periodRevision = this.state()
-                .getLong("revision");
+        if (this.periodGroup != this.state()
+            .getInteger("page")) {
+            this.period.setFocused(false);
+            this.refreshPeriodEditor();
+        } else if (!this.period.isFocused()) {
+            this.refreshPeriodEditor();
         }
-        if (!this.storagePriority.isFocused()) {
-            this.storagePriority.setText(
-                Integer.toString(
-                    this.state()
-                        .getInteger("storagePriority")));
-            this.storagePriorityRevision = this.state()
-                .getLong("revision");
+        if (this.storagePriorityGroup != this.state()
+            .getInteger("page")) {
+            this.storagePriority.setFocused(false);
+            this.refreshStoragePriorityEditor();
+        } else if (!this.storagePriority.isFocused()) {
+            this.refreshStoragePriorityEditor();
         }
         if (!this.selectedId.isEmpty() && this.selected() == null) {
             this.select("");
@@ -221,7 +234,7 @@ public final class GuiTransferDrive extends GuiContainer {
         for (final Object element : this.buttonList) {
             final GuiButton button = (GuiButton) element;
             button.enabled = editable;
-            if (button.id < 8) {
+            if (button.id < DriveSlotLayout.GROUP_COUNT) {
                 button.enabled = this.state()
                     .hasKey("session")
                     && button.id != this.state()
@@ -266,7 +279,7 @@ public final class GuiTransferDrive extends GuiContainer {
         this.localError = "";
         final int group = this.state()
             .getInteger("page");
-        if (button.id < 8) {
+        if (button.id < DriveSlotLayout.GROUP_COUNT) {
             this.request(
                 DriveGuiAction.Kind.PAGE,
                 button.id,
@@ -338,7 +351,18 @@ public final class GuiTransferDrive extends GuiContainer {
                             .getLong("revision"));
                     break;
                 case 14:
-                    this.request(DriveGuiAction.Kind.PERIOD, group, "", this.period.getText(), this.periodRevision);
+                    if (this.periodGroup != group) {
+                        this.period.setFocused(false);
+                        this.refreshPeriodEditor();
+                        break;
+                    }
+                    this.request(
+                        DriveGuiAction.Kind.PERIOD,
+                        this.periodGroup,
+                        "",
+                        this.period.getText(),
+                        this.periodRevision);
+                    this.period.setFocused(false);
                     break;
                 case 15:
                     this.targetPage--;
@@ -365,12 +389,18 @@ public final class GuiTransferDrive extends GuiContainer {
                             .getLong("revision"));
                     break;
                 case 19:
+                    if (this.storagePriorityGroup != group) {
+                        this.storagePriority.setFocused(false);
+                        this.refreshStoragePriorityEditor();
+                        break;
+                    }
                     this.request(
                         DriveGuiAction.Kind.STORAGE_PRIORITY,
-                        group,
+                        this.storagePriorityGroup,
                         "",
                         this.storagePriority.getText(),
                         this.storagePriorityRevision);
+                    this.storagePriority.setFocused(false);
                     break;
                 default:
                     break;
@@ -468,9 +498,9 @@ public final class GuiTransferDrive extends GuiContainer {
             183,
             7,
             129);
-        this.line(tr("storage_priority_short"), 9, 68, 47);
         final int group = this.state()
             .getInteger("page");
+        this.line(tr("storage_priority_short", group + 1), 9, 68, 47);
         this.line(
             tr(
                 "route",
@@ -497,7 +527,7 @@ public final class GuiTransferDrive extends GuiContainer {
             9,
             93,
             162);
-        this.line(tr("seconds"), 79, 151, 36);
+        this.line(tr("period_short", group + 1), 79, 151, 36);
         this.line(
             (this.targetPage + 1) + " / "
                 + Math.max(
@@ -580,9 +610,28 @@ public final class GuiTransferDrive extends GuiContainer {
             && mouseY >= this.guiTop + 64
             && mouseY < this.guiTop + 81) {
             final java.util.List<String> lines = new java.util.ArrayList<>();
-            lines.add(tr("storage_priority"));
-            lines.add(tr("storage_priority_hint"));
-            lines.add(tr("transfer_types"));
+            lines.addAll(
+                this.fontRendererObj.listFormattedStringToWidth(
+                    tr(
+                        "storage_priority",
+                        this.state()
+                            .getInteger("page") + 1),
+                    240));
+            for (final String key : new String[] { "storage_priority_hint", "transfer_types" }) {
+                lines.addAll(this.fontRendererObj.listFormattedStringToWidth(tr(key), 240));
+            }
+            this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
+        }
+        if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 167
+            && mouseY >= this.guiTop + 146
+            && mouseY < this.guiTop + 163) {
+            final java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add(
+                tr(
+                    "period",
+                    this.state()
+                        .getInteger("page") + 1));
+            lines.addAll(this.fontRendererObj.listFormattedStringToWidth(tr("period_hint"), 240));
             this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
         }
         if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 172

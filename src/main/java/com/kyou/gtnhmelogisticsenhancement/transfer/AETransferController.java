@@ -45,7 +45,8 @@ public final class AETransferController {
     private static final int TARGETS_PER_TICK = 4;
     private final TileMETransferDrive tile;
     private final BaseActionSource actionSource;
-    private final TransferClock clock = new TransferClock();
+    private final GroupTransferSchedule schedule = new GroupTransferSchedule();
+    private final GroupCursor[] groupCursors = new GroupCursor[DriveSlotLayout.GROUP_COUNT];
     private final TransferTransaction<IAEStack<?>> transaction;
     private final TransferEnergyAccount energyAccount;
     private TargetRegistry registry = new TargetRegistry();
@@ -58,6 +59,7 @@ public final class AETransferController {
     private boolean recoveryDue;
     private final TransferScheduler.Work scheduledWork = this::runSlice;
     private int nextSlot;
+    private int currentGroup = -1;
     private int sourceSlot = -1;
     private ItemStack sourceCell;
     private IMEInventory sourceInventory;
@@ -90,17 +92,24 @@ public final class AETransferController {
             if (this.graph != null && this.graph.isComplete()) {
                 this.graphAge++;
             }
+            for (final GroupCursor cursor : this.groupCursors) {
+                if (cursor != null && cursor.graph != null && cursor.graph.isComplete()) {
+                    cursor.graphAge++;
+                }
+            }
             if (this.tile.hasCellInventoryQuarantine()) {
                 this.stop("invalid_cell_inventory");
                 return;
             }
-            final boolean due = this.clock.tick();
+            final int dueGroups = this.schedule.tick();
             if (this.energyAccount.isPending() && !this.transaction.isPending()) {
                 this.stop("recovery_UNCERTAIN");
                 return;
             }
             if (this.transaction.isPending()) {
-                if (this.transaction.getPhase() == TransferTransaction.Phase.RECOVERABLE && due) {
+                if (this.transaction.getPhase() == TransferTransaction.Phase.RECOVERABLE && this.sourceSlot >= 0
+                    && this.sourceSlot < DriveSlotLayout.TOTAL_SLOTS
+                    && (dueGroups & 1 << DriveSlotLayout.group(this.sourceSlot)) != 0) {
                     this.recoveryDue = true;
                     TransferScheduler.enqueue(this.scheduledWork);
                 }
@@ -113,11 +122,10 @@ public final class AETransferController {
                 return;
             }
             if (!this.active) {
-                if (!due || this.registry.isEmpty()) {
+                if (!this.schedule.hasReadyGroup() || this.registry.isEmpty()) {
                     return;
                 }
                 this.active = true;
-                this.nextSlot = 0;
                 this.cycle = null;
                 this.graph = null;
             }
@@ -194,7 +202,8 @@ public final class AETransferController {
                 this.status = "resolving_targets";
                 return true;
             }
-            while (this.active && budget.nextStep()) {
+            this.selectGroup(this.schedule.nextReadyGroup());
+            while (this.active && this.currentGroup >= 0 && budget.nextStep()) {
                 if (this.types == null) {
                     if (!budget.openCell()) {
                         break;
@@ -274,17 +283,28 @@ public final class AETransferController {
             this.stop("api_failure");
             GTNHMELogisticsEnhancementMod.LOG.warn("ME Transfer Drive stopped after an AE API failure", failure);
         } finally {
+            // A pending transaction must retain its exact source, never a different group's restored cursor.
+            if (this.currentGroup >= 0 && !this.transaction.isPending()) {
+                this.saveGroupCursor();
+                this.finishSlot();
+                this.currentGroup = -1;
+            }
             this.ticking = false;
         }
         return this.active;
     }
 
     private void openNextSlot() {
-        if (this.nextSlot >= DriveSlotLayout.TOTAL_SLOTS) {
-            this.active = false;
+        if (this.nextSlot >= DriveSlotLayout.slot(this.currentGroup, 0) + DriveSlotLayout.SLOTS_PER_GROUP) {
+            this.schedule.complete(this.currentGroup);
+            this.groupCursors[this.currentGroup] = null;
+            this.currentGroup = -1;
+            this.active = this.schedule.hasReadyGroup();
             this.finishSlot();
-            this.cycle = null;
-            this.graph = null;
+            if (!this.active) {
+                this.cycle = null;
+                this.graph = null;
+            }
             this.status = "cycle_complete";
             return;
         }
@@ -587,6 +607,56 @@ public final class AETransferController {
         this.sourceInventory = null;
     }
 
+    private void selectGroup(final int group) {
+        this.currentGroup = group;
+        if (group < 0) {
+            this.active = false;
+            return;
+        }
+        final GroupCursor cursor = this.groupCursors[group];
+        this.nextSlot = cursor == null ? DriveSlotLayout.slot(group, 0) : cursor.nextSlot;
+        this.sourceSlot = cursor == null ? -1 : cursor.sourceSlot;
+        this.sourceCell = cursor == null ? null : cursor.sourceCell;
+        this.sourceInventory = cursor == null ? null : cursor.sourceInventory;
+        this.types = cursor == null ? null : cursor.types;
+        this.candidate = cursor == null ? null : cursor.candidate;
+        this.routed = cursor == null ? null : cursor.routed;
+        this.graph = cursor == null ? null : cursor.graph;
+        this.graphType = cursor == null ? null : cursor.graphType;
+        this.graphAge = cursor == null ? 0 : cursor.graphAge;
+    }
+
+    private void saveGroupCursor() {
+        final GroupCursor cursor = this.groupCursors[this.currentGroup] == null ? new GroupCursor()
+            : this.groupCursors[this.currentGroup];
+        cursor.nextSlot = this.nextSlot;
+        cursor.sourceSlot = this.sourceSlot;
+        cursor.sourceCell = this.sourceCell;
+        cursor.sourceInventory = this.sourceInventory;
+        cursor.types = this.types;
+        cursor.candidate = this.candidate;
+        cursor.routed = this.routed;
+        cursor.graph = this.graph;
+        cursor.graphType = this.graphType;
+        cursor.graphAge = this.graphAge;
+        this.groupCursors[this.currentGroup] = cursor;
+    }
+
+    /** At most one bounded (<=63 native types) cell snapshot per physical group. */
+    private static final class GroupCursor {
+
+        private int nextSlot;
+        private int sourceSlot;
+        private ItemStack sourceCell;
+        private IMEInventory sourceInventory;
+        private Iterator<?> types;
+        private IAEStack candidate;
+        private RoutedTransfer<IAEStack<?>, IGrid> routed;
+        private RouteGraph<IGrid> graph;
+        private IAEStackType<?> graphType;
+        private int graphAge;
+    }
+
     private void stop(final String reason) {
         TransferScheduler.remove(this.scheduledWork);
         this.recoveryDue = false;
@@ -594,6 +664,11 @@ public final class AETransferController {
             this.energyAccount.detach();
         }
         this.active = false;
+        this.currentGroup = -1;
+        this.schedule.clearReady();
+        for (int group = 0; group < this.groupCursors.length; group++) {
+            this.groupCursors[group] = null;
+        }
         this.graph = null;
         this.cycle = null;
         if (!this.transaction.isPending()) {
@@ -603,7 +678,6 @@ public final class AETransferController {
             this.candidate = null;
             this.routed = null;
         }
-        this.clock.reset();
         this.status = reason;
     }
 
@@ -723,13 +797,29 @@ public final class AETransferController {
     }
 
     public int getPeriodSeconds() {
-        return this.clock.getSeconds();
+        return this.getPeriodSeconds(0);
+    }
+
+    public int getPeriodSeconds(final int group) {
+        return this.schedule.getSeconds(group);
     }
 
     public void setPeriodSeconds(final int value) {
+        this.setPeriodSeconds(0, value);
+    }
+
+    public void setPeriodSeconds(final int group, final int value) {
         this.requireEditable();
-        this.clock.setSeconds(value);
-        this.routingChanged();
+        this.schedule.setSeconds(group, value);
+        this.routingRevision++;
+        this.groupCursors[group] = null;
+        this.active = !this.registry.isEmpty() && this.schedule.hasReadyGroup();
+        if (!this.active) {
+            TransferScheduler.remove(this.scheduledWork);
+            this.cycle = null;
+            this.graph = null;
+        }
+        this.tile.markDirty();
     }
 
     public void sourceAccessChanging() {
@@ -742,7 +832,7 @@ public final class AETransferController {
     }
 
     public void writeToNBT(final NBTTagCompound data) {
-        data.setInteger("transferPeriodSeconds", this.clock.getSeconds());
+        this.schedule.writeToNBT(data);
         data.removeTag("transferRouting");
         data.removeTag("invalidTransferRouting");
         if (this.quarantinedRouting != null) {
@@ -765,10 +855,7 @@ public final class AETransferController {
     public void readFromNBT(final NBTTagCompound data) {
         this.stop("loaded");
         this.energyAccount.read(data);
-        final int seconds = data.getInteger("transferPeriodSeconds");
-        this.clock.setSeconds(
-            seconds >= TransferClock.MIN_SECONDS && seconds <= TransferClock.MAX_SECONDS ? seconds
-                : TransferClock.DEFAULT_SECONDS);
+        this.schedule.readFromNBT(data);
         this.readRouting(data);
         if (data.hasKey("transferRecovery")) {
             this.quarantinedRecord = RecoveryEvidence.read(data);

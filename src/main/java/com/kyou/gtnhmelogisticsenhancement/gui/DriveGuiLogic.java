@@ -31,11 +31,11 @@ public final class DriveGuiLogic {
 
         void setRoute(int group, TargetRegistry.Route route);
 
-        void setPeriod(int seconds);
+        void setPeriod(int group, int seconds);
 
         void setAccess(AccessRestriction access);
 
-        void setStoragePriority(int priority);
+        void setStoragePriority(int group, int priority);
 
         void setFillPercent(int group, int percent);
 
@@ -104,9 +104,10 @@ public final class DriveGuiLogic {
                     context.setRoute(action.group, route);
                     break;
                 case PERIOD:
+                    if (!validGroup(action.group)) return "invalid";
                     final int seconds = ConfigurationInput
                         .clampInteger(action.number, TransferClock.MIN_SECONDS, TransferClock.MAX_SECONDS);
-                    context.setPeriod(seconds);
+                    context.setPeriod(action.group, seconds);
                     break;
                 case ACCESS:
                     final AccessRestriction access = AccessRestriction.valueOf(action.text);
@@ -129,7 +130,9 @@ public final class DriveGuiLogic {
                     context.setFillPercent(action.group, ConfigurationInput.clampInteger(action.number, 0, 100));
                     break;
                 case STORAGE_PRIORITY:
+                    if (!validGroup(action.group)) return "invalid";
                     context.setStoragePriority(
+                        action.group,
                         ConfigurationInput.clampInteger(action.number, Integer.MIN_VALUE, Integer.MAX_VALUE));
                     break;
                 case DELETE_TARGET:
@@ -167,7 +170,8 @@ public final class DriveGuiLogic {
     }
 
     public static boolean validClick(final int slot, final int button, final int mode, final int group) {
-        if (slot >= 100 || slot >= 0 && slot < 64 && !visibleSlot(slot, group)) {
+        if (slot >= DriveSlotLayout.TOTAL_SLOTS + 36
+            || slot >= 0 && slot < DriveSlotLayout.TOTAL_SLOTS && !visibleSlot(slot, group)) {
             return false;
         }
         if (mode == 5) {
@@ -187,7 +191,7 @@ public final class DriveGuiLogic {
     }
 
     public static boolean validHotbarSwap(final int slot, final int mode, final int hotbarCount) {
-        return mode != 2 || slot >= 64 || hotbarCount <= 1;
+        return mode != 2 || slot >= DriveSlotLayout.TOTAL_SLOTS || hotbarCount <= 1;
     }
 
     public static boolean validView(final long requestedPage, final long currentPage, final long sequence,
