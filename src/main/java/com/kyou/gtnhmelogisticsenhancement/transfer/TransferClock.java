@@ -3,7 +3,7 @@ package com.kyou.gtnhmelogisticsenhancement.transfer;
 /** Countdown only; callers perform bounded work on the server tick. */
 public final class TransferClock {
 
-    public static final int DEFAULT_SECONDS = 60;
+    public static final int DEFAULT_SECONDS = 3600;
     public static final int MIN_SECONDS = 1;
     public static final int MAX_SECONDS = 86400;
 

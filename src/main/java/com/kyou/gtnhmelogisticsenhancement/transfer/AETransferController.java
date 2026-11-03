@@ -120,8 +120,17 @@ public final class AETransferController {
                 this.status = "invalid_routing_configuration";
                 return;
             }
+            if (this.registry.isEmpty()) {
+                this.schedule.clearReady();
+                if (this.active) this.stop("idle");
+                return;
+            }
+            if ((dueGroups != 0 || this.active) && !this.retainReadyGroups()) {
+                if (this.active) this.stop("idle");
+                return;
+            }
             if (!this.active) {
-                if (!this.schedule.hasReadyGroup() || this.registry.isEmpty()) {
+                if (!this.schedule.hasReadyGroup()) {
                     return;
                 }
                 this.active = true;
@@ -183,6 +192,11 @@ public final class AETransferController {
             }
             if (this.tile.hasCellInventoryQuarantine() || this.quarantinedRouting != null) {
                 this.stop("invalid_routing_configuration");
+                return false;
+            }
+            // Cells can be removed after the Tile Tick but before the server END work slice.
+            if (this.registry.isEmpty() || !this.retainReadyGroups()) {
+                this.stop("idle");
                 return false;
             }
             if (!this.tile.getProxy()
@@ -291,6 +305,37 @@ public final class AETransferController {
             this.ticking = false;
         }
         return this.active;
+    }
+
+    /** Metadata and physical slots only: never open a cell or query an AE network just to decide to stay idle. */
+    private boolean retainReadyGroups() {
+        boolean remaining = false;
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            if (!this.schedule.isReady(group)) continue;
+            if (this.hasTransferCells(group)) {
+                remaining = true;
+            } else {
+                this.schedule.complete(group);
+                this.groupCursors[group] = null;
+            }
+        }
+        return remaining;
+    }
+
+    private boolean isTransferGroupEnabled(final int group) {
+        final TargetRegistry.Route route = this.registry.getRoute(group);
+        return this.registry.getFillPercent(group) > 0 && (route.getMode() == TargetRegistry.Mode.AUTOMATIC
+            || route.getMode() == TargetRegistry.Mode.SPECIFIC && !route.getTargetIds()
+                .isEmpty());
+    }
+
+    private boolean hasTransferCells(final int group) {
+        if (!this.isTransferGroupEnabled(group)) return false;
+        final int first = DriveSlotLayout.slot(group, 0);
+        for (int slot = first; slot < first + DriveSlotLayout.SLOTS_PER_GROUP; slot++) {
+            if (this.tile.getStackInSlot(slot) != null) return true;
+        }
+        return false;
     }
 
     private void openNextSlot() {
@@ -1039,12 +1084,17 @@ public final class AETransferController {
         if (TransferStorageTypes.batchLimit(type) == 0) {
             return groups;
         }
-        for (int slot = 0; slot < DriveSlotLayout.TOTAL_SLOTS; slot++) {
-            final IMEInventory<?> inventory = this.tile.getNativeCellHandler(slot);
-            if (inventory != null && inventory.getStackType() == type
-                && SourceCellAccess.canTransferFrom(inventory)
-                && this.registry.getFillPercent(DriveSlotLayout.group(slot)) > 0) {
-                groups[DriveSlotLayout.group(slot)] = true;
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            if (!this.isTransferGroupEnabled(group)) continue;
+            final int first = DriveSlotLayout.slot(group, 0);
+            for (int slot = first; slot < first + DriveSlotLayout.SLOTS_PER_GROUP; slot++) {
+                if (this.tile.getStackInSlot(slot) == null) continue;
+                final IMEInventory<?> inventory = this.tile.getNativeCellHandler(slot);
+                if (inventory != null && inventory.getStackType() == type
+                    && SourceCellAccess.canTransferFrom(inventory)) {
+                    groups[group] = true;
+                    break;
+                }
             }
         }
         return groups;

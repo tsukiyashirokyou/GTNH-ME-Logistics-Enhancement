@@ -16,6 +16,55 @@ import com.kyou.gtnhmelogisticsenhancement.tile.DriveSlotLayout;
 public class GroupTransferScheduleTest {
 
     @Test
+    public void newAndMissingNbtPeriodsWaitOneHourBeforeBecomingReady() {
+        final GroupTransferSchedule fresh = new GroupTransferSchedule();
+        final GroupTransferSchedule loaded = new GroupTransferSchedule();
+        loaded.setSeconds(0, 1);
+        loaded.readFromNBT(new NBTTagCompound());
+        assertAllDefault(fresh);
+        assertAllDefault(loaded);
+        for (int tick = 1; tick < 72000; tick++) {
+            assertEquals(0, fresh.tick());
+            assertEquals(0, loaded.tick());
+        }
+        assertEquals((1 << DriveSlotLayout.GROUP_COUNT) - 1, fresh.tick());
+        assertEquals((1 << DriveSlotLayout.GROUP_COUNT) - 1, loaded.tick());
+    }
+
+    @Test
+    public void existingSixtySecondPeriodsRemainUnchangedAcrossLegacyMigrationAndGroupedReload() {
+        final NBTTagCompound legacy = new NBTTagCompound();
+        legacy.setInteger("transferPeriodSeconds", 60);
+        final GroupTransferSchedule migrated = new GroupTransferSchedule();
+        migrated.readFromNBT(legacy);
+        final NBTTagCompound grouped = new NBTTagCompound();
+        migrated.writeToNBT(grouped);
+        final GroupTransferSchedule restored = new GroupTransferSchedule();
+        restored.readFromNBT(grouped);
+        for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+            assertEquals(60, migrated.getSeconds(group));
+            assertEquals(60, restored.getSeconds(group));
+        }
+        for (int tick = 1; tick < 1200; tick++) {
+            assertEquals(0, migrated.tick());
+            assertEquals(0, restored.tick());
+        }
+        assertEquals((1 << DriveSlotLayout.GROUP_COUNT) - 1, migrated.tick());
+        assertEquals((1 << DriveSlotLayout.GROUP_COUNT) - 1, restored.tick());
+    }
+
+    @Test
+    public void invalidLegacyPeriodsUseTheNewOneHourDefault() {
+        for (final int invalid : new int[] { -1, 0, 86401, Integer.MAX_VALUE }) {
+            final NBTTagCompound legacy = new NBTTagCompound();
+            legacy.setInteger("transferPeriodSeconds", invalid);
+            final GroupTransferSchedule schedule = new GroupTransferSchedule();
+            schedule.readFromNBT(legacy);
+            assertAllDefault(schedule);
+        }
+    }
+
+    @Test
     public void groupsExpireIndependentlyAndChangingOneDoesNotResetAnother() {
         final GroupTransferSchedule schedule = new GroupTransferSchedule();
         schedule.setSeconds(0, 1);
@@ -143,7 +192,7 @@ public class GroupTransferScheduleTest {
 
     private static void assertAllDefault(final GroupTransferSchedule schedule) {
         for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
-            assertEquals(TransferClock.DEFAULT_SECONDS, schedule.getSeconds(group));
+            assertEquals(3600, schedule.getSeconds(group));
         }
     }
 }

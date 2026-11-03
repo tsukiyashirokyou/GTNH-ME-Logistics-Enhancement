@@ -8,9 +8,9 @@ import org.junit.Test;
 public class TransferClockTest {
 
     @Test
-    public void defaultPeriodIsExactly1200Ticks() {
+    public void defaultPeriodIsExactly72000Ticks() {
         final TransferClock clock = new TransferClock();
-        for (int tick = 1; tick < 1200; tick++) {
+        for (int tick = 1; tick < 72000; tick++) {
             assertFalse(clock.tick());
         }
         assertTrue(clock.tick());

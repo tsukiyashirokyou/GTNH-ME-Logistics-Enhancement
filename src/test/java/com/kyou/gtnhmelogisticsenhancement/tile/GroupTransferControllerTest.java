@@ -12,6 +12,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.UUID;
 
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -25,10 +27,12 @@ import com.kyou.gtnhmelogisticsenhancement.transfer.RoutedTransfer;
 import com.kyou.gtnhmelogisticsenhancement.transfer.RoutingCycle;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TargetRegistry;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferScheduler;
+import com.kyou.gtnhmelogisticsenhancement.transfer.TransferTarget;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferTransaction;
 
 import appeng.api.storage.IMEInventory;
 import appeng.api.storage.data.IAEStack;
+import appeng.me.helpers.AENetworkProxy;
 
 /** Uses the production tile/controller APIs; grid publication and native cell identities use the existing doubles. */
 public class GroupTransferControllerTest {
@@ -70,7 +74,11 @@ public class GroupTransferControllerTest {
 
     @Test
     public void changingAnotherGroupThroughTheControllerPreservesTheExistingCountdown() throws Exception {
-        final AETransferController controller = controller(new CellHandlerCacheTest.TestDrive());
+        final CellHandlerCacheTest.TestDrive drive = new CellHandlerCacheTest.TestDrive();
+        final AETransferController controller = controller(drive);
+        final UUID target = registerTarget(controller);
+        controller.setRoute(0, TargetRegistry.Route.automatic());
+        drive.install(0, TYPES[0], 100);
         controller.setPeriodSeconds(0, 1);
         for (int tick = 0; tick < 19; tick++) {
             controller.tick();
@@ -82,6 +90,7 @@ public class GroupTransferControllerTest {
             .getDeclaredMethod("nextReadyGroup");
         next.setAccessible(true);
         assertEquals(0, next.invoke(schedule));
+        controller.removeTarget(target);
         controller.setPeriodSeconds(1, 3);
         assertFalse(field("active").getBoolean(controller));
     }
@@ -90,6 +99,7 @@ public class GroupTransferControllerTest {
     public void allGroupCursorsRetainTheirOwnSourceTypeAndProofWhileProofAgeKeepsAdvancing() throws Exception {
         final CellHandlerCacheTest.TestDrive drive = new CellHandlerCacheTest.TestDrive();
         final AETransferController controller = controller(drive);
+        registerTarget(controller);
         final Object[] candidates = new Object[DriveSlotLayout.GROUP_COUNT];
         final Object[] types = new Object[DriveSlotLayout.GROUP_COUNT];
         final Object[] routed = new Object[DriveSlotLayout.GROUP_COUNT];
@@ -98,6 +108,7 @@ public class GroupTransferControllerTest {
         cycle.prepare(1);
         for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
             controller.setPeriodSeconds(group, 1);
+            controller.setRoute(group, TargetRegistry.Route.automatic());
             drive.install(DriveSlotLayout.slot(group, 0), TYPES[group % TYPES.length], group + 100);
         }
         for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
@@ -227,6 +238,130 @@ public class GroupTransferControllerTest {
         assertSame(originalCell, field("sourceCell").get(controller));
         assertSame(originalInventory, field("sourceInventory").get(controller));
         assertEquals(TransferTransaction.Phase.RECOVERABLE, transaction.getPhase());
+    }
+
+    @Test
+    public void emptyDisabledZeroFillAndUnselectedGroupsDoNotQueueOrTouchAEAtTheirDeadlines() throws Exception {
+        for (int scenario = 0; scenario < 4; scenario++) {
+            final IdleProbeDrive drive = new IdleProbeDrive();
+            final AETransferController controller = controller(drive);
+            registerTarget(controller);
+            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
+                controller.setPeriodSeconds(group, 1);
+                if (scenario != 0) drive.install(DriveSlotLayout.slot(group, 0), TYPES[0], 100);
+                if (scenario == 0 || scenario == 2) controller.setRoute(group, TargetRegistry.Route.automatic());
+                if (scenario == 2) controller.setFillPercent(group, 0);
+                if (scenario == 3) controller.setRoute(group, TargetRegistry.Route.specific(Collections.emptySet()));
+            }
+            drive.forbidAE = true;
+            for (int tick = 0; tick < 60; tick++) {
+                controller.tick();
+                assertFalse(field("active").getBoolean(controller));
+                assertFalse(queued(controller));
+                assertNull(field("cycle").get(controller));
+                assertNull(field("graph").get(controller));
+            }
+            for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) assertFalse(ready(controller, group));
+        }
+    }
+
+    @Test
+    public void anotherGroupsDeadlineCannotStartAnEnabledGroupBeforeItsOwnDeadline() throws Exception {
+        final IdleProbeDrive drive = new IdleProbeDrive();
+        final AETransferController controller = controller(drive);
+        registerTarget(controller);
+        controller.setRoute(0, TargetRegistry.Route.automatic()); // Enabled, but physically empty.
+        controller.setPeriodSeconds(0, 1);
+        drive.install(8, TYPES[0], 100); // Installed, but route remains closed.
+        controller.setPeriodSeconds(1, 1);
+        drive.install(56, TYPES[0], 100);
+        controller.setRoute(7, TargetRegistry.Route.automatic());
+        controller.setPeriodSeconds(7, 2);
+        drive.forbidAE = true;
+        for (int tick = 0; tick < 39; tick++) {
+            controller.tick();
+            assertFalse(queued(controller));
+        }
+        controller.tick();
+        assertTrue(queued(controller));
+        assertTrue(ready(controller, 7));
+        for (int group = 0; group < 7; group++) assertFalse(ready(controller, group));
+        assertNull(field("cycle").get(controller));
+        assertNull(field("graph").get(controller));
+    }
+
+    @Test
+    public void insertingAndRemovingCellsRetainsTheGroupTimerWithoutIdleWorkOrStaleCursors() throws Exception {
+        final IdleProbeDrive drive = new IdleProbeDrive();
+        final AETransferController controller = controller(drive);
+        registerTarget(controller);
+        controller.setRoute(0, TargetRegistry.Route.automatic());
+        controller.setPeriodSeconds(0, 1);
+        drive.forbidAE = true;
+        for (int tick = 0; tick < 20; tick++) controller.tick();
+        assertFalse(queued(controller));
+        drive.forbidAE = false;
+        drive.install(0, TYPES[0], 100);
+        drive.forbidAE = true;
+        for (int tick = 0; tick < 19; tick++) {
+            controller.tick();
+            assertFalse(queued(controller));
+        }
+        controller.tick();
+        assertTrue(queued(controller));
+        invoke(controller, "selectGroup", new Class<?>[] { int.class }, 0);
+        invoke(controller, "saveGroupCursor", new Class<?>[0]);
+        field("currentGroup").setInt(controller, -1);
+        drive.forbidAE = false;
+        drive.getInternalInventory()
+            .setInventorySlotContents(0, null);
+        drive.forbidAE = true;
+        controller.tick();
+        assertFalse(queued(controller));
+        assertFalse(field("active").getBoolean(controller));
+        assertFalse(ready(controller, 0));
+        assertNull(((Object[]) field("groupCursors").get(controller))[0]);
+        assertNull(field("cycle").get(controller));
+        assertNull(field("graph").get(controller));
+    }
+
+    private static UUID registerTarget(final AETransferController controller) {
+        return controller.registerTarget(new TransferTarget(UUID.randomUUID(), 0, 0, 64, 0));
+    }
+
+    private static boolean ready(final AETransferController controller, final int group) throws Exception {
+        final Object schedule = field("schedule").get(controller);
+        final Method method = schedule.getClass()
+            .getDeclaredMethod("isReady", int.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(schedule, group);
+    }
+
+    private static boolean queued(final AETransferController controller) throws Exception {
+        final Field server = TransferScheduler.class.getDeclaredField("SERVER");
+        server.setAccessible(true);
+        final Field queued = TransferScheduler.class.getDeclaredField("queued");
+        queued.setAccessible(true);
+        return ((Map<?, ?>) queued.get(server.get(null))).containsKey(field("scheduledWork").get(controller));
+    }
+
+    private static final class IdleProbeDrive extends CellHandlerCacheTest.TestDrive {
+
+        boolean forbidAE;
+
+        IdleProbeDrive() throws Exception {}
+
+        @Override
+        public IMEInventory<?> getNativeCellHandler(final int slot) {
+            if (this.forbidAE) throw new AssertionError("Idle scheduling opened a cell handler");
+            return super.getNativeCellHandler(slot);
+        }
+
+        @Override
+        public AENetworkProxy getProxy() {
+            if (this.forbidAE) throw new AssertionError("Idle scheduling accessed the AE proxy");
+            return super.getProxy();
+        }
     }
 
     private static AETransferController controller(final TileMETransferDrive drive) throws Exception {

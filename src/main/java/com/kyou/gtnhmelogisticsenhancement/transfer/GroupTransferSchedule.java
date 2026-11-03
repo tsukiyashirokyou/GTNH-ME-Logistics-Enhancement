@@ -52,6 +52,11 @@ final class GroupTransferSchedule {
         return false;
     }
 
+    boolean isReady(final int group) {
+        checkGroup(group);
+        return this.ready[group];
+    }
+
     void complete(final int group) {
         checkGroup(group);
         this.ready[group] = false;

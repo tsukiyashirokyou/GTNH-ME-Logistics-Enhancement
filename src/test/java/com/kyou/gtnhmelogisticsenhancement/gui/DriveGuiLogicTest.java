@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import com.kyou.gtnhmelogisticsenhancement.tile.DriveSlotLayout;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TargetRegistry;
+import com.kyou.gtnhmelogisticsenhancement.transfer.TransferClock;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferTarget;
 
 import appeng.api.config.AccessRestriction;
@@ -189,7 +190,7 @@ public class DriveGuiLogicTest {
 
     @Test
     public void periodAcceptsBothBoundsAndDefault() {
-        for (String value : new String[] { "1", "60", "86400" }) {
+        for (String value : new String[] { "1", "60", "3600", "86400" }) {
             assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", value));
             assertEquals(Integer.parseInt(value), this.context.settings.periods[0]);
         }
@@ -200,7 +201,7 @@ public class DriveGuiLogicTest {
         for (String value : new String[] { "1.5", "1e3", "", " 60", "1\n", "+2" }) {
             assertEquals("invalid", this.apply(DriveGuiAction.Kind.PERIOD, 0, null, "", value));
         }
-        assertEquals(60, this.context.settings.periods[0]);
+        assertEquals(TransferClock.DEFAULT_SECONDS, this.context.settings.periods[0]);
         assertEquals(0, this.context.settings.mutations);
     }
 
@@ -355,7 +356,7 @@ public class DriveGuiLogicTest {
                 this.context.registry.getRoute(3)
                     .getTargetId());
             assertEquals(AccessRestriction.READ_WRITE, this.context.access);
-            assertEquals(60, this.context.settings.periods[0]);
+            assertEquals(TransferClock.DEFAULT_SECONDS, this.context.settings.periods[0]);
         }
         assertEquals(inputs.length, this.context.settings.mutations);
     }
@@ -397,7 +398,7 @@ public class DriveGuiLogicTest {
             assertEquals(100, this.context.registry.getFillPercent(0));
             assertEquals(route, this.context.registry.getRoute(4));
         }
-        assertEquals(60, this.context.settings.periods[0]);
+        assertEquals(TransferClock.DEFAULT_SECONDS, this.context.settings.periods[0]);
         assertEquals(AccessRestriction.READ_WRITE, this.context.access);
         assertEquals(0, this.context.settings.storagePriorities[0]);
     }
@@ -437,7 +438,9 @@ public class DriveGuiLogicTest {
             assertEquals("ok", this.apply(DriveGuiAction.Kind.PERIOD, group, null, "", Integer.toString(group + 1)));
             for (int checked = 0; checked < DriveSlotLayout.GROUP_COUNT; checked++) {
                 assertEquals(checked <= group ? -checked - 1 : 0, this.context.settings.storagePriorities[checked]);
-                assertEquals(checked <= group ? checked + 1 : 60, this.context.settings.periods[checked]);
+                assertEquals(
+                    checked <= group ? checked + 1 : TransferClock.DEFAULT_SECONDS,
+                    this.context.settings.periods[checked]);
                 assertEquals(
                     TargetRegistry.Mode.UNASSIGNED,
                     this.context.registry.getRoute(checked)
@@ -457,7 +460,7 @@ public class DriveGuiLogicTest {
         assertEquals(0, this.context.settings.mutations);
         for (int group = 0; group < DriveSlotLayout.GROUP_COUNT; group++) {
             assertEquals(0, this.context.settings.storagePriorities[group]);
-            assertEquals(60, this.context.settings.periods[group]);
+            assertEquals(TransferClock.DEFAULT_SECONDS, this.context.settings.periods[group]);
         }
     }
 
@@ -481,9 +484,11 @@ public class DriveGuiLogicTest {
                     viewer));
             assertEquals("ok", DriveGuiLogic.apply(pending, viewer));
             assertEquals(6, viewer.page);
-            assertEquals(kind == DriveGuiAction.Kind.PERIOD ? 25 : 60, viewer.settings.periods[3]);
+            assertEquals(
+                kind == DriveGuiAction.Kind.PERIOD ? 25 : TransferClock.DEFAULT_SECONDS,
+                viewer.settings.periods[3]);
             assertEquals(kind == DriveGuiAction.Kind.STORAGE_PRIORITY ? 25 : 0, viewer.settings.storagePriorities[3]);
-            assertEquals(60, viewer.settings.periods[6]);
+            assertEquals(TransferClock.DEFAULT_SECONDS, viewer.settings.periods[6]);
             assertEquals(0, viewer.settings.storagePriorities[6]);
             assertEquals("stale", DriveGuiLogic.apply(pending, viewer));
             assertEquals(1, viewer.settings.mutations);
@@ -504,7 +509,7 @@ public class DriveGuiLogicTest {
             "90");
         assertEquals("ok", this.apply(DriveGuiAction.Kind.STORAGE_PRIORITY, 7, null, "", "-42"));
         assertEquals("stale", DriveGuiLogic.apply(pending, other));
-        assertEquals(60, other.settings.periods[2]);
+        assertEquals(TransferClock.DEFAULT_SECONDS, other.settings.periods[2]);
         assertEquals(
             "denied",
             DriveGuiLogic.apply(
@@ -650,7 +655,7 @@ public class DriveGuiLogicTest {
         int mutations;
 
         Settings() {
-            java.util.Arrays.fill(this.periods, 60);
+            java.util.Arrays.fill(this.periods, TransferClock.DEFAULT_SECONDS);
         }
     }
 }
