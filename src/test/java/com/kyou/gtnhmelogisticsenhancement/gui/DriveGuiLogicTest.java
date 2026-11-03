@@ -103,7 +103,7 @@ public class DriveGuiLogicTest {
         this.context.settings.revision++;
         assertEquals("stale", DriveGuiLogic.apply(request, this.context));
         assertEquals(
-            "ME Interface",
+            "ME Dual Interface",
             this.context.target(this.first)
                 .getDisplayName());
     }

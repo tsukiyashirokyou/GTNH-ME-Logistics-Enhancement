@@ -12,7 +12,6 @@ import java.util.UUID;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntity;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import com.kyou.gtnhmelogisticsenhancement.GTNHMELogisticsEnhancementMod;
@@ -538,12 +537,13 @@ public final class AETransferController {
         if (!this.loaded(target)) {
             return null;
         }
-        final TileEntity targetTile = this.tile.getWorldObj()
-            .getTileEntity(target.getX(), target.getY(), target.getZ());
-        if (targetTile == null || targetTile.getClass() != TileInterface.class || targetTile.isInvalid()) {
+        final TileInterface targetTile = DualInterfaceTarget.resolve(
+            this.tile.getWorldObj()
+                .getTileEntity(target.getX(), target.getY(), target.getZ()));
+        if (targetTile == null) {
             return null;
         }
-        final IGridNode node = ((TileInterface) targetTile).getGridNode(ForgeDirection.UNKNOWN);
+        final IGridNode node = targetTile.getGridNode(ForgeDirection.UNKNOWN);
         if (node == null || node.getGrid() == null) {
             return null;
         }
@@ -551,12 +551,14 @@ public final class AETransferController {
         return new RoutingCycle.Endpoint<>(
             grid,
             () -> this.loaded(target) && !targetTile.isInvalid()
-                && ((TileInterface) targetTile).getGridNode(ForgeDirection.UNKNOWN) == node ? node.getGrid() : null,
+                && this.tile.getWorldObj()
+                    .getTileEntity(target.getX(), target.getY(), target.getZ()) == targetTile
+                && targetTile.getGridNode(ForgeDirection.UNKNOWN) == node ? node.getGrid() : null,
             () -> this.loaded(target) && !targetTile.isInvalid()
                 && node.isActive()
                 && this.tile.getWorldObj()
                     .getTileEntity(target.getX(), target.getY(), target.getZ()) == targetTile
-                && ((TileInterface) targetTile).getGridNode(ForgeDirection.UNKNOWN) == node
+                && targetTile.getGridNode(ForgeDirection.UNKNOWN) == node
                 && this.canInject(grid));
     }
 
@@ -776,10 +778,11 @@ public final class AETransferController {
             throw new IllegalArgumentException("Target must be in the same dimension");
         }
         if (this.loaded(target)) {
-            final TileEntity targetTile = this.tile.getWorldObj()
-                .getTileEntity(target.getX(), target.getY(), target.getZ());
-            if (targetTile == null || targetTile.getClass() != TileInterface.class || targetTile.isInvalid()) {
-                throw new IllegalArgumentException("Loaded target must be an original block ME interface");
+            if (DualInterfaceTarget.resolve(
+                this.tile.getWorldObj()
+                    .getTileEntity(target.getX(), target.getY(), target.getZ()))
+                == null) {
+                throw new IllegalArgumentException("Loaded target must be a block ME Dual Interface");
             }
             final RoutingCycle.Endpoint<IGrid> endpoint = this.resolveEndpoint(target);
             if (endpoint != null && endpoint.getGrid() == this.sourceGrid()) {

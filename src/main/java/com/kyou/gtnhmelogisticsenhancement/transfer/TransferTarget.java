@@ -21,7 +21,7 @@ public final class TransferTarget {
     private final int priority;
 
     public TransferTarget(final UUID id, final int dimension, final int x, final int y, final int z) {
-        this(id, dimension, x, y, z, "ME Interface", 0);
+        this(id, dimension, x, y, z, "ME Dual Interface", 0);
     }
 
     public TransferTarget(final UUID id, final int dimension, final int x, final int y, final int z,

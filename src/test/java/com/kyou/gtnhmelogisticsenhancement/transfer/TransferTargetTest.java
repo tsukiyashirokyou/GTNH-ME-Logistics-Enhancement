@@ -15,6 +15,11 @@ public class TransferTargetTest {
     private final Lookup lookup = new Lookup();
 
     @Test
+    public void newTargetUsesDualInterfaceAlias() {
+        assertEquals("ME Dual Interface", this.target.getDisplayName());
+    }
+
+    @Test
     public void unloadedAndCrossDimensionTargetsNeverResolveTiles() {
         this.lookup.loaded = false;
         assertNull(this.target.resolve(0, this.sourceGrid, this.lookup));

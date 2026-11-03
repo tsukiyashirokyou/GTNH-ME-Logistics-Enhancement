@@ -1,14 +1,14 @@
 tile.meTransferDrive.name=ME 转运驱动器
 item.meNetworkBindingTool.name=ME 网络绑定工具
-gtnhmelogisticsenhancement.binding.hint=潜行 + 右键转运驱动器，然后潜行 + 右键方块 ME 接口。
+gtnhmelogisticsenhancement.binding.hint=潜行 + 右键转运驱动器，然后潜行 + 右键方块 ME 二合一接口。
 gtnhmelogisticsenhancement.binding.source=已选驱动器：维度 %s，%s，%s，%s
-gtnhmelogisticsenhancement.binding.source_selected=已选择源设备：维度 %s（%s，%s，%s）。请潜行 + 右键方块 ME 接口。
+gtnhmelogisticsenhancement.binding.source_selected=已选择源设备：维度 %s（%s，%s，%s）。请潜行 + 右键方块 ME 二合一接口。
 gtnhmelogisticsenhancement.binding.no_source=尚未选择有效源设备，请先潜行 + 右键转运驱动器。
 gtnhmelogisticsenhancement.binding.source_unloaded=所选源设备的区块尚未加载；工具不会强制加载区块。
 gtnhmelogisticsenhancement.binding.source_invalid=所选源驱动器已不存在，请重新选择源设备。
 gtnhmelogisticsenhancement.binding.source_id_mismatch=所选位置的驱动器身份已改变，请重新选择源设备。
 gtnhmelogisticsenhancement.binding.different_dimension=源设备和目标必须位于同一维度，请选择当前维度的源设备。
-gtnhmelogisticsenhancement.binding.invalid_target=目标无效。仅支持原版方块 ME 接口，暂不支持线缆上的接口 Part。
+gtnhmelogisticsenhancement.binding.invalid_target=目标无效。仅支持 AE2 Fluid Craft 的方块 ME 二合一接口，不支持普通 ME 接口或线缆上的接口 Part。
 gtnhmelogisticsenhancement.binding.locked=源设备正因转运调用、待恢复事务或损坏配置而锁定，无法更改绑定。
 gtnhmelogisticsenhancement.binding.permission_denied=没有操作权限；源驱动器与目标接口均需要建造权限。
 gtnhmelogisticsenhancement.binding.self_grid=不能登记与源驱动器属于同一实际 AE Grid 的接口。

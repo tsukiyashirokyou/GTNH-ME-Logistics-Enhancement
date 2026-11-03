@@ -1,14 +1,14 @@
 tile.meTransferDrive.name=ME Transfer Drive
 item.meNetworkBindingTool.name=ME Network Binding Tool
-gtnhmelogisticsenhancement.binding.hint=Sneak + right-click a Transfer Drive, then a block ME Interface.
+gtnhmelogisticsenhancement.binding.hint=Sneak + right-click a Transfer Drive, then a block ME Dual Interface.
 gtnhmelogisticsenhancement.binding.source=Selected drive: dimension %s, %s, %s, %s
-gtnhmelogisticsenhancement.binding.source_selected=Source device selected: D%s (%s, %s, %s). Sneak + right-click a block ME Interface.
+gtnhmelogisticsenhancement.binding.source_selected=Source device selected: D%s (%s, %s, %s). Sneak + right-click a block ME Dual Interface.
 gtnhmelogisticsenhancement.binding.no_source=No valid source selected. Sneak + right-click a Transfer Drive first.
 gtnhmelogisticsenhancement.binding.source_unloaded=The selected source chunk is not loaded. No chunks were loaded by this tool.
 gtnhmelogisticsenhancement.binding.source_invalid=The selected source drive no longer exists. Select a source again.
 gtnhmelogisticsenhancement.binding.source_id_mismatch=The drive at the selected position has changed. Select the source again.
 gtnhmelogisticsenhancement.binding.different_dimension=Source and target must be in the same dimension. Select a local source.
-gtnhmelogisticsenhancement.binding.invalid_target=Invalid target. Use an original block ME Interface; cable interface parts are not supported.
+gtnhmelogisticsenhancement.binding.invalid_target=Invalid target. Only the AE2 Fluid Craft block ME Dual Interface is supported; ordinary ME Interfaces and cable interface parts are not supported.
 gtnhmelogisticsenhancement.binding.locked=The source drive configuration is locked by a transfer, recovery, or damaged configuration.
 gtnhmelogisticsenhancement.binding.permission_denied=Permission denied. Building permission is required at both the source drive and target interface.
 gtnhmelogisticsenhancement.binding.self_grid=Cannot register an interface on the source drive's own AE Grid.

@@ -19,6 +19,7 @@ import com.kyou.gtnhmelogisticsenhancement.GTNHMELogisticsEnhancementMod;
 import com.kyou.gtnhmelogisticsenhancement.binding.BindingToolLogic;
 import com.kyou.gtnhmelogisticsenhancement.binding.BindingToolNbt;
 import com.kyou.gtnhmelogisticsenhancement.tile.TileMETransferDrive;
+import com.kyou.gtnhmelogisticsenhancement.transfer.DualInterfaceTarget;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferTarget;
 
 import appeng.api.networking.IGridNode;
@@ -184,22 +185,22 @@ public final class ItemNetworkBindingTool extends Item {
 
         @Override
         public boolean isInterface(final BindingToolLogic.Position position) {
-            final TileEntity tile = this.tile(position);
-            return tile != null && tile.getClass() == TileInterface.class && !tile.isInvalid();
+            return DualInterfaceTarget.resolve(this.tile(position)) != null;
         }
 
         @Override
         public boolean canUseInterface(final BindingToolLogic.Position position) {
-            final TileEntity tile = this.tile(position);
-            return this.isInterface(position) && this.allowed(position, ((TileInterface) tile).getProxy());
+            final TileInterface tile = DualInterfaceTarget.resolve(this.tile(position));
+            return tile != null && this.allowed(position, tile.getProxy());
         }
 
         @Override
         public Object interfaceGrid(final BindingToolLogic.Position position) {
-            if (!this.isInterface(position)) {
+            final TileInterface tile = DualInterfaceTarget.resolve(this.tile(position));
+            if (tile == null) {
                 return null;
             }
-            final IGridNode node = ((TileInterface) this.tile(position)).getGridNode(ForgeDirection.UNKNOWN);
+            final IGridNode node = tile.getGridNode(ForgeDirection.UNKNOWN);
             return node == null ? null : node.getGrid();
         }
 

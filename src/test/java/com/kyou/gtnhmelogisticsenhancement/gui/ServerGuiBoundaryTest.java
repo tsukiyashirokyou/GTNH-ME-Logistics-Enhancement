@@ -20,7 +20,7 @@ public class ServerGuiBoundaryTest {
             "gui/DriveGuiNetwork$ClickHandler", "gui/DriveGuiNetwork$ClickMessage", "transfer/TransferStorageTypes",
             "transfer/SourceCellAccess", "transfer/AETransferController", "transfer/RecoveryEvidence",
             "gui/ConfigurationInput", "transfer/TransferScheduler", "transfer/TransferEnergy",
-            "transfer/TransferEnergyAccount", "transfer/TransferPowerBudget" }) {
+            "transfer/TransferEnergyAccount", "transfer/TransferPowerBudget", "transfer/DualInterfaceTarget" }) {
             final String resource = "/com/kyou/gtnhmelogisticsenhancement/" + type + ".class";
             try (InputStream input = ServerGuiBoundaryTest.class.getResourceAsStream(resource)) {
                 assertNotNull(resource, input);

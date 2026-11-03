@@ -57,6 +57,24 @@ public class TargetRegistryNbtTest {
     }
 
     @Test
+    public void legacyInterfaceAliasKeepsBindingIdentityPriorityAndRoute() {
+        final TargetRegistry registry = new TargetRegistry();
+        final TransferTarget legacy = new TransferTarget(UUID.randomUUID(), 0, 16, 64, 32, "ME Interface", 42);
+        registry.register(legacy);
+        registry.setRoute(3, TargetRegistry.Route.specific(legacy.getId()));
+        final TargetRegistry restored = TargetRegistryNbt.read(TargetRegistryNbt.write(registry));
+        final TransferTarget loaded = restored.getTargets()
+            .get(0);
+        assertEquals(legacy.getId(), loaded.getId());
+        assertEquals("ME Interface", loaded.getDisplayName());
+        assertEquals(42, loaded.getPriority());
+        assertEquals(
+            legacy.getId(),
+            restored.getRoute(3)
+                .getTargetId());
+    }
+
+    @Test
     public void freshRegistryRoundTripKeepsAllGroupsUnassignedAndAtFullFill() {
         final TargetRegistry restored = TargetRegistryNbt.read(TargetRegistryNbt.write(new TargetRegistry()));
         assertEquals(

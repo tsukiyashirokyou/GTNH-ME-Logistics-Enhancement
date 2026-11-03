@@ -42,6 +42,11 @@ public class BindingToolLogicTest {
             1,
             this.source.registry.getTargets()
                 .size());
+        assertEquals(
+            "ME Dual Interface",
+            this.source.registry.getTargets()
+                .get(0)
+                .getDisplayName());
         for (int group = 0; group < 8; group++) {
             assertEquals(
                 TargetRegistry.Mode.UNASSIGNED,
