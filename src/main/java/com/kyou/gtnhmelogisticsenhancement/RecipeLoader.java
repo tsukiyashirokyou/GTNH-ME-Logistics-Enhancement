@@ -26,7 +26,7 @@ public final class RecipeLoader {
                 stack(
                     definitions.blocks()
                         .iOPort())));
-        // GTNH 2.9.0-RC-2: CoreMod 2.9.84's Wireless Kit uses plateTitanium.
+        // GTNH 2.9.0: CoreMod 2.9.99's Wireless Kit uses plateTitanium.
         // AE definitions supply the pinned material/part metadata, including default Fluix glass cable.
         GameRegistry.addRecipe(
             toolRecipe(

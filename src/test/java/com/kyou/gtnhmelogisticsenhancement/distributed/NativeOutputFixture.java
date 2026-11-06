@@ -68,6 +68,35 @@ public class NativeOutputFixture {
         assertEquals(0, next.ejectItems(Collections.singletonList(item(0, 1)), 1));
     }
 
+    public void nativeItemRecipeCheckAndActualLargeChunksAgree() {
+        final PartitionItemOutput bus = new PartitionItemOutput();
+        final ItemStack outputStack = item(0, Integer.MAX_VALUE);
+        final ItemEjectionHelper check = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
+        assertEquals(3, check.ejectItems(Arrays.asList(outputStack, outputStack.copy()), 3));
+        assertTrue(
+            bus.store()
+                .entries()
+                .isEmpty());
+        final ItemEjectionHelper output = new ItemEjectionHelper(Collections.singletonList(bus), true);
+        assertEquals(3, output.ejectItems(Arrays.asList(outputStack, outputStack.copy()), 3));
+        assertEquals(
+            0,
+            bus.store()
+                .quantity(itemId(0)));
+        output.commit();
+        assertEquals(
+            Integer.MAX_VALUE * 6L,
+            bus.store()
+                .quantity(itemId(0)));
+        assertEquals(
+            1,
+            bus.store()
+                .identityCount());
+        assertEquals(Integer.MAX_VALUE, outputStack.stackSize);
+        final ItemEjectionHelper next = new ItemEjectionHelper(Collections.singletonList(bus), true, true);
+        assertEquals(0, next.ejectItems(Collections.singletonList(item(0, 1)), 1));
+    }
+
     public void nativeFluidRecipeCheckAndActualLargeChunksAgree() {
         final PartitionFluidOutput hatch = new PartitionFluidOutput();
         final FluidEjectionHelper check = new FluidEjectionHelper(Collections.singletonList(hatch), true, true);

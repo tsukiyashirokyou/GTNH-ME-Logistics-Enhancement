@@ -80,7 +80,8 @@ public final class DistributedOutputGui {
             }
         }.singletonSlotGroup())
             .pos(8, 23)
-            .addTooltipLine(view.text("card_note")));
+            .addTooltipLine(view.text("card_note"))
+            .addTooltipLine(view.text("card_contents_note")));
         panel.child(
             IKey.lang(view.prefix + "partitions")
                 .asWidget()
@@ -104,9 +105,11 @@ public final class DistributedOutputGui {
                 .size(72, 14)
                 .pos(216, 24));
         panel.child(
-            IKey.dynamic(() -> view.text("network", view.active, view.powered, view.booting))
+            IKey.dynamic(
+                () -> view.text("network", DistributedOutputText.network(view.active, view.powered, view.booting)))
                 .asWidget()
-                .pos(8, 47));
+                .pos(8, 47)
+                .maxWidth(288));
         panel.child(
             IKey.dynamic(() -> view.text("capacity", view.total, view.capacity, view.quota))
                 .asWidget()
@@ -152,15 +155,11 @@ public final class DistributedOutputGui {
                 .asWidget()
                 .pos(239, 116));
         panel.child(
-            IKey.dynamic(() -> view.text("card_state", view.validCard))
+            IKey.dynamic(() -> view.text("card_state", DistributedOutputText.capacity(view.validCard)))
                 .asWidget()
                 .pos(8, 194));
         panel.child(
-            IKey.dynamic(
-                () -> view.text(
-                    "diagnostic",
-                    view.fault.isEmpty() ? view.text("ok")
-                        : "UNSUPPORTED_FLUID_NBT".equals(view.fault) ? view.text("unsupported_nbt") : view.fault))
+            IKey.dynamic(() -> view.text("diagnostic", DistributedOutputText.diagnostic(view.fault)))
                 .asWidget()
                 .pos(8, 207)
                 .scale(0.7f)

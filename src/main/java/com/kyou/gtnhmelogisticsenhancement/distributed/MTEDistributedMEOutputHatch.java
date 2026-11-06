@@ -148,7 +148,9 @@ public class MTEDistributedMEOutputHatch extends MTEHatchOutput implements Distr
     @Override
     public String[] getDescription() {
         return new String[] { StatCollector.translateToLocal("gtnhmelogisticsenhancement.hatch.description"),
+            StatCollector.translateToLocal("gtnhmelogisticsenhancement.hatch.connection_note"),
             StatCollector.translateToLocal("gtnhmelogisticsenhancement.hatch.card_note"),
+            StatCollector.translateToLocal("gtnhmelogisticsenhancement.hatch.card_contents_note"),
             StatCollector.translateToLocal("gtnhmelogisticsenhancement.hatch.emergency_note") };
     }
 
@@ -679,7 +681,7 @@ public class MTEDistributedMEOutputHatch extends MTEHatchOutput implements Distr
     public String[] getInfoData() {
         return new String[] { this.getLocalName(), this.state.store()
             .totalQuantity()
-            .toString() + " L", this.state.fault() };
+            .toString() + " L", DistributedOutputText.diagnostic(this.diagnostic()) };
     }
 
     @Override

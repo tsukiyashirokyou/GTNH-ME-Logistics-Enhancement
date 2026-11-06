@@ -13,7 +13,7 @@ import appeng.me.storage.FluidCellInventoryHandler;
 import appeng.util.item.AEFluidStack;
 import gregtech.api.util.GTUtility.FluidId;
 
-/** Pinned AE2FC 1.5.113 native finite fluid cells, probed exclusively on a defensive copy. */
+/** Pinned AE2FC 1.5.116 native finite fluid cells, probed exclusively on a defensive copy. */
 public final class FluidCellCapacityPolicy implements DistributedOutputState.CapacityPolicy<FluidId> {
 
     private final IStorageCell cell;

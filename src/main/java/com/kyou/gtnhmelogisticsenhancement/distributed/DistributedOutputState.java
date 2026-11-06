@@ -7,6 +7,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagCompound;
 
+import com.kyou.gtnhmelogisticsenhancement.GTNHMELogisticsEnhancementMod;
+
 /** Per-machine main-thread state. The flight journal is evidence, never a second inventory or a refund. */
 public class DistributedOutputState<K> {
 
@@ -108,6 +110,7 @@ public class DistributedOutputState<K> {
     }
 
     public void isolate(final String reason) {
+        if (!reason.equals(this.fault)) GTNHMELogisticsEnhancementMod.LOG.warn("Distributed output paused: {}", reason);
         this.fault = reason;
         this.outputRound = null;
         this.roundFirst = null;
@@ -212,6 +215,8 @@ public class DistributedOutputState<K> {
             }
         } catch (RuntimeException uncertain) {
             this.fault = "UNCERTAIN_OUTPUT";
+            GTNHMELogisticsEnhancementMod.LOG
+                .warn("Distributed output paused because delivery could not be confirmed", uncertain);
             // Retain stock AND the offered-stack journal. Neither may be replayed without external evidence.
             markDirty.run();
         } finally {
@@ -289,9 +294,13 @@ public class DistributedOutputState<K> {
                 state.fault = "UNCERTAIN_OUTPUT_RELOAD";
             }
             state.updateCard(card);
+            if (!state.fault()
+                .isEmpty())
+                GTNHMELogisticsEnhancementMod.LOG.warn("Loaded paused distributed output: {}", state.fault());
         } catch (RuntimeException damaged) {
             state.quarantined = raw == null ? new NBTTagCompound() : raw.copy();
             state.fault = "INVALID_SAVED_DATA";
+            GTNHMELogisticsEnhancementMod.LOG.warn("Distributed output saved data could not be loaded", damaged);
         }
     }
 }

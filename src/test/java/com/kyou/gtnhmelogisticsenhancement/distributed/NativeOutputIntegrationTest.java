@@ -29,6 +29,7 @@ public class NativeOutputIntegrationTest {
         return Arrays.asList(
             new Object[][] { { "nativeItemRecipeCheckAcceptsWholeOverageWithoutChangingStock" },
                 { "nativeItemActualParallelAndDuplicateIdentityCommitWholeBatch" },
+                { "nativeItemRecipeCheckAndActualLargeChunksAgree" },
                 { "nativeFluidRecipeCheckAndActualLargeChunksAgree" },
                 { "allFourVoidModeFlagPairsUseNativeHelperProtectionAndKeepOtherProducts" },
                 { "helpersTryOtherOutputsAfterOnePartitionRejects" },

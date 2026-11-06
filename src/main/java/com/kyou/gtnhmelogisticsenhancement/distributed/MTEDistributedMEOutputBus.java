@@ -93,7 +93,9 @@ public class MTEDistributedMEOutputBus extends MTEHatchOutputBus implements Dist
     @Override
     public String[] getDescription() {
         return new String[] { StatCollector.translateToLocal("gtnhmelogisticsenhancement.bus.description"),
+            StatCollector.translateToLocal("gtnhmelogisticsenhancement.bus.connection_note"),
             StatCollector.translateToLocal("gtnhmelogisticsenhancement.bus.card_note"),
+            StatCollector.translateToLocal("gtnhmelogisticsenhancement.bus.card_contents_note"),
             StatCollector.translateToLocal("gtnhmelogisticsenhancement.bus.emergency_note") };
     }
 

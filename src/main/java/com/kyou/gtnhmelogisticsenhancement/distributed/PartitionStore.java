@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 
+import com.kyou.gtnhmelogisticsenhancement.GTNHMELogisticsEnhancementMod;
+
 /** Main-thread-only stock. Identities, including their NBT, must remain immutable after insertion. */
 public final class PartitionStore<K> {
 
@@ -484,6 +486,8 @@ public final class PartitionStore<K> {
                     this.plan.pending,
                     identity,
                     amount);
+                GTNHMELogisticsEnhancementMod.LOG
+                    .warn("Distributed output paused after input failure: " + reason, problem);
             }
             if (this.emergencyAllowed || this.protectAcceptedOutput || problem instanceof CommitConflictException)
                 this.active = false;

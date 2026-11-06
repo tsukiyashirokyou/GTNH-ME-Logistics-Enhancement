@@ -88,7 +88,9 @@ public final class ItemNetworkBindingTool extends Item {
     @SuppressWarnings({ "rawtypes", "unchecked" })
     public void addInformation(final ItemStack stack, final EntityPlayer player, final List lines,
         final boolean advanced) {
+        lines.add(StatCollector.translateToLocal(MESSAGE + "description"));
         lines.add(StatCollector.translateToLocal(MESSAGE + "hint"));
+        lines.add(StatCollector.translateToLocal(MESSAGE + "gui_hint"));
         try {
             final BindingToolLogic.SourceReference source = BindingToolNbt.readSource(stack.getTagCompound());
             if (source != null) {

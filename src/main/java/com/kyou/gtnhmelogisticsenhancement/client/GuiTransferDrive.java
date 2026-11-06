@@ -55,6 +55,30 @@ public final class GuiTransferDrive extends GuiContainer {
         return StatCollector.translateToLocalFormatted("gtnhmelogisticsenhancement.gui." + key, arguments);
     }
 
+    private static String translatedOr(final String key, final String fallback) {
+        return StatCollector.canTranslate("gtnhmelogisticsenhancement.gui." + key) ? tr(key) : tr(fallback);
+    }
+
+    private static String targetName(final NBTTagCompound target) {
+        final String name = target.getString("name");
+        return "ME Dual Interface".equals(name) ? tr("default_target_name") : name;
+    }
+
+    private String feedbackText() {
+        if (!this.localError.isEmpty()) return this.localError;
+        return translatedOr(
+            this.state()
+                .getString("feedback"),
+            "waiting_for_server");
+    }
+
+    private String editedName() {
+        final NBTTagCompound target = this.selected();
+        final String edited = this.name.getText();
+        // A translated default label is presentation only; saving a priority must preserve the stored alias.
+        return target != null && edited.equals(targetName(target)) ? target.getString("name") : edited;
+    }
+
     @Override
     public void initGui() {
         super.initGui();
@@ -178,7 +202,7 @@ public final class GuiTransferDrive extends GuiContainer {
     private void select(final String id) {
         this.selectedId = id;
         final NBTTagCompound target = this.selected();
-        this.name.setText(target == null ? "" : target.getString("name"));
+        this.name.setText(target == null ? "" : targetName(target));
         this.priority.setText(target == null ? "" : Integer.toString(target.getInteger("priority")));
         this.editorRevision = this.state()
             .getLong("revision");
@@ -244,8 +268,10 @@ public final class GuiTransferDrive extends GuiContainer {
             } else if (button.id == 13) {
                 button.displayString = tr(
                     "access",
-                    this.state()
-                        .getString("access"));
+                    translatedOr(
+                        "access_mode." + this.state()
+                            .getString("access"),
+                        "access_mode.UNKNOWN"));
             } else if (button.id == 15 || button.id == 16) {
                 button.enabled = button.id == 15 ? this.targetPage > 0
                     : (this.targetPage + 1) * 4 < this.targets()
@@ -264,7 +290,7 @@ public final class GuiTransferDrive extends GuiContainer {
                             (target.getString("id")
                                 .equals(this.selectedId) ? ">" : "") + (index + 1)
                                 + ". "
-                                + target.getString("name")
+                                + targetName(target)
                                 + " ["
                                 + target.getInteger("priority")
                                 + "]",
@@ -375,7 +401,7 @@ public final class GuiTransferDrive extends GuiContainer {
                     this.request(
                         DriveGuiAction.Kind.UPDATE_TARGET,
                         group,
-                        this.name.getText(),
+                        this.editedName(),
                         this.priority.getText(),
                         this.editorRevision);
                     break;
@@ -505,10 +531,11 @@ public final class GuiTransferDrive extends GuiContainer {
             tr(
                 "route",
                 group + 1,
-                tr(
+                translatedOr(
                     this.state()
                         .getString("route" + group)
-                        .toLowerCase(java.util.Locale.ROOT))),
+                        .toLowerCase(java.util.Locale.ROOT),
+                    "transfer_disabled")),
             9,
             81,
             62);
@@ -540,13 +567,12 @@ public final class GuiTransferDrive extends GuiContainer {
         final NBTTagCompound selected = this.selected();
         if (selected != null) {
             this.line(
-                "D" + selected.getInteger("dimension")
-                    + " "
-                    + selected.getInteger("x")
-                    + ", "
-                    + selected.getInteger("y")
-                    + ", "
-                    + selected.getInteger("z"),
+                tr(
+                    "location",
+                    selected.getInteger("dimension"),
+                    selected.getInteger("x"),
+                    selected.getInteger("y"),
+                    selected.getInteger("z")),
                 183,
                 113,
                 129);
@@ -575,14 +601,7 @@ public final class GuiTransferDrive extends GuiContainer {
             183,
             218,
             129);
-        this.line(
-            this.localError.isEmpty() ? tr(
-                this.state()
-                    .getString("feedback"))
-                : this.localError,
-            183,
-            229,
-            129);
+        this.line(this.feedbackText(), 183, 229, 129);
     }
 
     private void line(final String text, final int x, final int y, final int width) {
@@ -597,6 +616,15 @@ public final class GuiTransferDrive extends GuiContainer {
         this.priority.drawTextBox();
         this.storagePriority.drawTextBox();
         this.fillPercent.drawTextBox();
+        if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 167
+            && mouseY >= this.guiTop + 124
+            && mouseY < this.guiTop + 140) {
+            this.drawHoveringText(
+                this.fontRendererObj.listFormattedStringToWidth(tr("access_hint"), 240),
+                mouseX,
+                mouseY,
+                this.fontRendererObj);
+        }
         if (mouseX >= this.guiLeft + 74 && mouseX < this.guiLeft + 167
             && mouseY >= this.guiTop + 79
             && mouseY < this.guiTop + 94) {
@@ -644,12 +672,13 @@ public final class GuiTransferDrive extends GuiContainer {
                     "route",
                     this.state()
                         .getInteger("page") + 1,
-                    tr(
+                    translatedOr(
                         this.state()
                             .getString(
                                 "route" + this.state()
                                     .getInteger("page"))
-                            .toLowerCase(java.util.Locale.ROOT))));
+                            .toLowerCase(java.util.Locale.ROOT),
+                        "transfer_disabled")));
             lines.add(
                 tr(
                     "selected_count",
@@ -661,7 +690,7 @@ public final class GuiTransferDrive extends GuiContainer {
                 final NBTTagCompound target = this.targets()
                     .getCompoundTagAt(index);
                 if (this.isChosen(target.getString("id"))) {
-                    lines.add(target.getString("name") + " [" + target.getInteger("priority") + "]");
+                    lines.add(targetName(target) + " [" + target.getInteger("priority") + "]");
                 }
             }
             // The full selection remains visible through the four-row target pages.
@@ -684,24 +713,22 @@ public final class GuiTransferDrive extends GuiContainer {
                         .getCompoundTagAt(index) : null;
             }
             if (detail != null) {
-                lines.add(detail.getString("name"));
+                lines.add(targetName(detail));
                 lines.add(
-                    "D" + detail.getInteger("dimension")
-                        + ": "
-                        + detail.getInteger("x")
-                        + ", "
-                        + detail.getInteger("y")
-                        + ", "
-                        + detail.getInteger("z"));
+                    tr(
+                        "location",
+                        detail.getInteger("dimension"),
+                        detail.getInteger("x"),
+                        detail.getInteger("y"),
+                        detail.getInteger("z")));
                 lines.add(tr("priority") + ": " + detail.getInteger("priority"));
-                lines.add(tr("last_check", tr("target_status." + detail.getString("status"))));
+                lines.add(
+                    tr(
+                        "last_check",
+                        translatedOr("target_status." + detail.getString("status"), "target_status.UNKNOWN")));
             }
             lines.add(tr("status", this.schedulerStatus()));
-            lines.add(
-                this.localError.isEmpty() ? tr(
-                    this.state()
-                        .getString("feedback"))
-                    : this.localError);
+            lines.add(this.feedbackText());
             lines.add(tr("not_proof"));
             if (mouseY < this.guiTop + 91 || mouseY >= this.guiTop + 204
                 || mouseY >= this.guiTop + 111 && mouseY < this.guiTop + 123) {
@@ -713,8 +740,7 @@ public final class GuiTransferDrive extends GuiContainer {
     private String schedulerStatus() {
         final String status = this.state()
             .getString("status");
-        final String key = "gtnhmelogisticsenhancement.gui.scheduler." + status;
-        return StatCollector.canTranslate(key) ? StatCollector.translateToLocal(key) : status;
+        return translatedOr("scheduler." + status, "scheduler.unknown");
     }
 
     @Override

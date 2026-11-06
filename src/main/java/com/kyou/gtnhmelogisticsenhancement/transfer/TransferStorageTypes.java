@@ -25,7 +25,7 @@ public final class TransferStorageTypes {
                 // Not a throughput quota: external vanilla container bridges cannot represent larger offers safely.
                 return TransferEnergy.MAX_AMOUNT;
             case "essentia":
-                // ThE 1.7.64-GTNH: native aspect units, one unit per AE energy operation.
+                // ThE 1.7.68-GTNH: native aspect units, one unit per AE energy operation.
                 return type.getAmountPerUnit() == 1 ? TransferEnergy.MAX_AMOUNT : 0;
             default:
                 return 0;

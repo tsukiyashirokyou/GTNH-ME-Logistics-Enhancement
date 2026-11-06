@@ -7,6 +7,7 @@ import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedBusRegistratio
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiHandler;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
+import com.kyou.gtnhmelogisticsenhancement.item.ItemMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemNetworkBindingTool;
 import com.kyou.gtnhmelogisticsenhancement.tile.TileMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferScheduler;
@@ -24,7 +25,8 @@ public class CommonProxy {
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
 
         GTNHMELogisticsEnhancementMod.meTransferDrive = new BlockMETransferDrive();
-        GameRegistry.registerBlock(GTNHMELogisticsEnhancementMod.meTransferDrive, "meTransferDrive");
+        GameRegistry
+            .registerBlock(GTNHMELogisticsEnhancementMod.meTransferDrive, ItemMETransferDrive.class, "meTransferDrive");
         GameRegistry
             .registerTileEntity(TileMETransferDrive.class, GTNHMELogisticsEnhancementMod.MODID + ":meTransferDrive");
 
