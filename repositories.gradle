@@ -1,5 +1,9 @@
 // Add any additional repositories for your dependencies here.
 
 repositories {
-
+    maven {
+        name = "FalsePatternChunkApi"
+        url = "https://mvn.falsepattern.com/releases/"
+        content { includeModule("com.falsepattern", "chunkapi-mc1.7.10") }
+    }
 }

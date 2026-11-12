@@ -5,6 +5,9 @@ import net.minecraft.entity.player.EntityPlayer;
 import com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedBusRegistration;
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
+import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyNetwork;
+import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyRecipes;
+import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyRegistration;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiHandler;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemMETransferDrive;
@@ -22,6 +25,7 @@ import cpw.mods.fml.common.registry.GameRegistry;
 public class CommonProxy {
 
     public void preInit(FMLPreInitializationEvent event) {
+        MEEnergyNetwork.init();
         Config.synchronizeConfiguration(event.getSuggestedConfigurationFile());
 
         GTNHMELogisticsEnhancementMod.meTransferDrive = new BlockMETransferDrive();
@@ -38,6 +42,7 @@ public class CommonProxy {
 
     public void init(FMLInitializationEvent event) {
         DistributedBusRegistration.register();
+        MEEnergyRegistration.register();
         DistributedOutputEnergy.init();
         TransferScheduler.init();
         DriveGuiNetwork.init();
@@ -51,9 +56,12 @@ public class CommonProxy {
     public void receiveGuiState(DriveGuiNetwork.StateMessage message) {}
 
     public void postInit(FMLPostInitializationEvent event) {
+        MEEnergyRecipes.register();
         RecipeLoader.register();
         DistributedBusRegistration.registerRecipe();
     }
 
-    public void serverStarting(FMLServerStartingEvent event) {}
+    public void serverStarting(FMLServerStartingEvent event) {
+        MEEnergyRegistration.verify();
+    }
 }

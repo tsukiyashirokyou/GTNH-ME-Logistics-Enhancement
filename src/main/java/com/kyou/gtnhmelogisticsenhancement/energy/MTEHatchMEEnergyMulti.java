@@ -1,0 +1,330 @@
+package com.kyou.gtnhmelogisticsenhancement.energy;
+
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
+import net.minecraftforge.common.util.ForgeDirection;
+
+import appeng.api.networking.IGridNode;
+import appeng.api.util.AECableType;
+import appeng.api.util.DimensionalCoord;
+import appeng.me.helpers.AENetworkProxy;
+import gregtech.api.interfaces.ITexture;
+import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
+import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
+import gregtech.api.metatileentity.MetaTileEntity;
+import tectech.thing.metaTileEntity.hatch.MTEHatchEnergyMulti;
+
+/** Native MTEHatchEnergyMulti identity with one native EU stock and immutable ME capability. */
+@IMetaTileEntity.SkipGenerateDescription
+@IMetaTileEntity.SkipGenerateName
+public final class MTEHatchMEEnergyMulti extends MTEHatchEnergyMulti implements IMEEnergyEndpoint {
+
+    private final MEEnergyEndpointState energyState;
+    private final MEEnergyNodeSupport nodeSupport;
+
+    public MTEHatchMEEnergyMulti(final int id, final String name, final String regional, final MEEnergySpec spec) {
+        super(
+            id,
+            name,
+            regional,
+            MEEnergyEndpointState.tier(spec, MEEnergySpec.Role.ENERGY, MEEnergySpec.Family.MULTI),
+            spec.amperage());
+        this.energyState = new MEEnergyEndpointState(spec);
+        this.nodeSupport = new MEEnergyNodeSupport(this);
+    }
+
+    public MTEHatchMEEnergyMulti(final String name, final MEEnergySpec spec, final String[] description,
+        final ITexture[][][] textures) {
+        super(
+            name,
+            MEEnergyEndpointState.tier(spec, MEEnergySpec.Role.ENERGY, MEEnergySpec.Family.MULTI),
+            spec.amperage(),
+            description,
+            textures);
+        this.energyState = new MEEnergyEndpointState(spec);
+        this.nodeSupport = new MEEnergyNodeSupport(this);
+    }
+
+    @Override
+    public MetaTileEntity newMetaEntity(final IGregTechTileEntity base) {
+        return new MTEHatchMEEnergyMulti(this.mName, spec(), this.mDescriptionArray, this.mTextures);
+    }
+
+    @Override
+    public MetaTileEntity machine() {
+        return this;
+    }
+
+    @Override
+    public MEEnergyEndpointState energyState() {
+        return this.energyState;
+    }
+
+    @Override
+    public MEEnergyNodeSupport nodeSupport() {
+        return this.nodeSupport;
+    }
+
+    @Override
+    public AENetworkProxy getProxy() {
+        return this.nodeSupport.proxy();
+    }
+
+    @Override
+    public IGridNode getGridNode(final ForgeDirection side) {
+        return this.nodeSupport.node(side);
+    }
+
+    @Override
+    public IGridNode getActionableNode() {
+        return this.nodeSupport.actionableNode();
+    }
+
+    @Override
+    public DimensionalCoord getLocation() {
+        return this.nodeSupport.location();
+    }
+
+    @Override
+    public AECableType getCableConnectionType(final ForgeDirection side) {
+        return this.nodeSupport.cableType(side);
+    }
+
+    @Override
+    public void gridChanged() {
+        this.nodeSupport.statusChanged();
+    }
+
+    @Override
+    public boolean isPowered() {
+        return this.nodeSupport.isPowered();
+    }
+
+    @Override
+    public boolean isActive() {
+        return this.nodeSupport.isActive();
+    }
+
+    @Override
+    public boolean isBooting() {
+        return this.nodeSupport.isBooting();
+    }
+
+    @Override
+    public void securityBreak() {
+        this.nodeSupport.securityBreak();
+    }
+
+    @Override
+    public boolean connectsToAllSides() {
+        return this.nodeSupport.connectsToAllSides();
+    }
+
+    @Override
+    public void setConnectsToAllSides(final boolean value) {
+        this.nodeSupport.setConnectsToAllSides(value);
+    }
+
+    @Override
+    public boolean onWireCutterRightClick(final ForgeDirection side, final ForgeDirection wrenchingSide,
+        final EntityPlayer player, final float x, final float y, final float z,
+        final net.minecraft.item.ItemStack tool) {
+        if (!this.nodeSupport.canConfigure(player)) return false;
+        this.nodeSupport.setConnectsToAllSides(!connectsToAllSides());
+        return true;
+    }
+
+    @Override
+    public void onFacingChange() {
+        this.nodeSupport.facingChanged();
+    }
+
+    @Override
+    public long maxEUStore() {
+        return spec().capacity();
+    }
+
+    @Override
+    public long maxEUInput() {
+        return spec().voltage();
+    }
+
+    @Override
+    public long maxAmperesIn() {
+        return spec().amperage() + (spec().amperage() >> 2);
+    }
+
+    @Override
+    public long maxWorkingAmperesIn() {
+        return spec().amperage();
+    }
+
+    @Override
+    public long getMinimumStoredEU() {
+        return spec().nativeReserve();
+    }
+
+    @Override
+    public int getAmperes() {
+        return spec().amperage();
+    }
+
+    @Override
+    public void setAmperes(final int amperes) {
+        if (amperes != spec().amperage()) throw new IllegalArgumentException("ME hatch amperage is fixed");
+        this.Amperes = spec().amperage();
+    }
+
+    @Override
+    public int getHatchType() {
+        return 1;
+    }
+
+    @Override
+    public void getWailaNBTData(final EntityPlayerMP player, final TileEntity tile, final NBTTagCompound tag,
+        final World world, final int x, final int y, final int z) {
+        super.getWailaNBTData(player, tile, tag, world, x, y, z);
+        tag.setLong("amperage", spec().amperage());
+    }
+
+    @Override
+    public String[] getInfoData() {
+        return new String[] { "ME EU: " + spec().voltage() + " V, " + spec().amperage() + " A" };
+    }
+
+    @Override
+    public boolean isElectric() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnetInput() {
+        return false;
+    }
+
+    @Override
+    public boolean isEnetOutput() {
+        return false;
+    }
+
+    @Override
+    public boolean isInputFacing(final ForgeDirection side) {
+        return false;
+    }
+
+    @Override
+    public boolean isOutputFacing(final ForgeDirection side) {
+        return false;
+    }
+
+    @Override
+    public int getCapacity() {
+        return 0;
+    }
+
+    @Override
+    public String[] getDescription() {
+        return MEEnergyPresentation.description(spec());
+    }
+
+    @Override
+    public ITexture[] getTexturesActive(final ITexture base) {
+        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.ENERGY, true);
+    }
+
+    @Override
+    public ITexture[] getTexturesInactive(final ITexture base) {
+        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.ENERGY, false);
+    }
+
+    @Override
+    protected boolean forceUseMui2() {
+        return true;
+    }
+
+    @Override
+    public com.cleanroommc.modularui.screen.ModularPanel buildUI(
+        final com.cleanroommc.modularui.factory.PosGuiData data,
+        final com.cleanroommc.modularui.value.sync.PanelSyncManager sync,
+        final com.cleanroommc.modularui.screen.UISettings settings) {
+        return MEEnergyGui.build(this, sync, settings);
+    }
+
+    @Override
+    public boolean onRightclick(final IGregTechTileEntity base, final EntityPlayer player) {
+        if (base == null || player == null) return false;
+        if (base.isServerSide() && this.nodeSupport.canConfigure(player)) openGui(player);
+        return true;
+    }
+
+    @Override
+    public boolean onRightclick(final IGregTechTileEntity base, final EntityPlayer player, final ForgeDirection side,
+        final float x, final float y, final float z) {
+        return onRightclick(base, player);
+    }
+
+    @Override
+    public void onFirstTick(final IGregTechTileEntity base) {
+        super.onFirstTick(base);
+        if (base.isServerSide()) {
+            this.energyState.start();
+            this.nodeSupport.onReady();
+        }
+    }
+
+    @Override
+    public void onPostTick(final IGregTechTileEntity base, final long tick) {
+        super.onPostTick(base, tick);
+        if (base.isServerSide()) this.nodeSupport.pollDemandWake(tick);
+    }
+
+    @Override
+    public void onColorChangeServer(final byte color) {
+        // No physical EU/laser/data connections: do not scan six neighbors or rebuild their pipe networks.
+        this.energyState.configurationChanged();
+        this.nodeSupport.configurationChanged();
+    }
+
+    @Override
+    public void onUnload() {
+        this.nodeSupport.stop(true);
+        super.onUnload();
+    }
+
+    @Override
+    public void onRemoval() {
+        this.nodeSupport.stop(false);
+        super.onRemoval();
+    }
+
+    @Override
+    public void onBlockDestroyed() {
+        this.nodeSupport.destroyed();
+        super.onBlockDestroyed();
+    }
+
+    @Override
+    public void saveNBTData(final NBTTagCompound tag) {
+        super.saveNBTData(tag);
+        MEEnergyNbt.writeWorld(tag, this.energyState);
+        this.nodeSupport.writeWorld(tag);
+    }
+
+    @Override
+    public void loadNBTData(final NBTTagCompound tag) {
+        super.loadNBTData(tag);
+        this.Amperes = spec().amperage();
+        MEEnergyNbt.readWorld(tag, this.energyState);
+        this.nodeSupport.readWorld(tag);
+    }
+
+    @Override
+    public void setItemNBT(final NBTTagCompound tag) {
+        super.setItemNBT(tag);
+        MEEnergyNbt.stripItemEnergy(tag);
+        this.nodeSupport.writeItem(tag);
+    }
+}

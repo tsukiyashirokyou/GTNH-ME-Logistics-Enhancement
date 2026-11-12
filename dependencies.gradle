@@ -34,20 +34,29 @@
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
 dependencies {
+    // Optional, verified official TST 0.8.0 dev JAR; test-only, never part of the addon runtime/publication.
+    if (providers.gradleProperty("meEnergyTstDevJar").isPresent()) {
+        testRuntimeOnly(files(providers.gradleProperty("meEnergyTstDevJar").get()))
+    }
     // GTNH 2.9.0 stable manifest: DreamAssemblerXXL/releases/manifests/2.9.0.json.
     // Keep compile, test and development runtime dependencies aligned with the pack.
     compileOnly("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.265:dev") { transitive = false }
     compileOnly("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
     compileOnly("com.github.GTNewHorizons:ModularUI2:2.3.94-1.7.10:dev") { transitive = false }
     testImplementation("com.github.GTNewHorizons:GT5-Unofficial:5.09.54.265:dev") { transitive = false }
+    // Native BaseMetaTileEntity fixtures expose StructureLib alignment interfaces at test compile time.
+    testImplementation("com.github.GTNewHorizons:StructureLib:1.4.47:dev") { transitive = false }
+    // GTMod.NBT_VERSION links its Chunk API adapter during native BaseMetaTileEntity NBT tests.
+    testRuntimeOnly("com.falsepattern:chunkapi-mc1.7.10:0.8.4:dev") { transitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI2:2.3.94-1.7.10:dev") { transitive = false }
     // GTNH 2.9.0's real finite fluid cells; production only links AE2's IStorageCell API.
     testImplementation("com.github.GTNewHorizons:AE2FluidCraft-Rework:1.5.116-gtnh:dev") { transitive = false }
     // AE2's pinned native item definitions also load its bauble terminal class in isolated cell tests.
     testRuntimeOnly("com.github.GTNewHorizons:Baubles-Expanded:2.2.27-GTNH:dev") { transitive = false }
-    // Pinned GT dev bytecode uses these stubs on the existing Java 8 test toolchain.
-    testRuntimeOnly("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:1.3.5:downgraded-8") { transitive = false }
+    // Pinned GT dev registration constructors call the v2 java_base annotation stubs on Java 8.
+    // Test runtime only: never alter the pack's mods or publish this API as an addon dependency.
+    testRuntimeOnly("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:2.0.1:downgraded-8") { transitive = false }
     testRuntimeOnly("net.industrial-craft:industrialcraft-2:2.2.828-experimental:dev") { transitive = false }
     testRuntimeOnly("org.joml:joml:1.10.8")
 
@@ -92,5 +101,19 @@ dependencies {
     testRuntimeOnly("it.unimi.dsi:fastutil:8.5.18")
     testRuntimeOnly("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209") {
         transitive = false
+    }
+}
+
+// The compatibility profile deliberately avoids resolving TST's entire modpack or inventing Maven coordinates.
+if (providers.gradleProperty("meEnergyTstDevJar").isPresent()) {
+    tasks.named("test") {
+        systemProperty("meEnergyTstCompatibility", "true")
+        doFirst {
+            def tstJar = file(providers.gradleProperty("meEnergyTstDevJar").get())
+            def expected = "902023ee5ea1781049d073c877622c03fbddc090a283d8299be445aac21afa96"
+            if (!tstJar.isFile()) throw new GradleException("TST compatibility dev JAR is missing: " + tstJar)
+            def actual = java.security.MessageDigest.getInstance("SHA-256").digest(tstJar.bytes).encodeHex().toString()
+            if (actual != expected) throw new GradleException("Expected official TST 0.8.0 dev JAR SHA-256 " + expected + "; got " + actual)
+        }
     }
 }

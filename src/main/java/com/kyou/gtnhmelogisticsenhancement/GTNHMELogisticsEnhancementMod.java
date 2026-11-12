@@ -7,12 +7,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
+import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyNetwork;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
 import com.kyou.gtnhmelogisticsenhancement.transfer.TransferScheduler;
 
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLLoadCompleteEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
@@ -56,12 +58,18 @@ public class GTNHMELogisticsEnhancementMod {
     }
 
     @Mod.EventHandler
+    public void loadComplete(FMLLoadCompleteEvent event) {
+        com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyRegistration.verify();
+    }
+
+    @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         proxy.serverStarting(event);
     }
 
     @Mod.EventHandler
     public void serverStopped(FMLServerStoppedEvent event) {
+        MEEnergyNetwork.stopServer();
         TransferScheduler.clear();
         DistributedOutputEnergy.clear();
         DriveGuiNetwork.clearServerQueue();
