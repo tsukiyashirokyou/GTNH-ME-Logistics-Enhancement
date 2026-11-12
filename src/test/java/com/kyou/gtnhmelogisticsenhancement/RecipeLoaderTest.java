@@ -7,7 +7,9 @@ import static org.junit.Assert.assertSame;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.oredict.ShapedOreRecipe;
+import net.minecraftforge.oredict.ShapelessOreRecipe;
 
 import org.junit.Test;
 
@@ -61,5 +63,43 @@ public class RecipeLoaderTest {
 
     private static ItemStack stack(final int metadata) {
         return new ItemStack(new Item(), 1, metadata);
+    }
+
+    @Test
+    public void monitorUsesOneCardAndOneMeterWithoutPropagatingTheirNbt() {
+        final ItemStack output = stack(72), card = stack(73), meter = stack(74);
+        for (final ItemStack item : new ItemStack[] { output, card, meter }) {
+            item.stackSize = 4;
+            item.setTagCompound(new NBTTagCompound());
+            item.getTagCompound()
+                .setString("privateData", "not copied");
+        }
+        final ShapelessOreRecipe recipe = RecipeLoader.monitorRecipe(output, card, meter);
+        assertEquals(
+            2,
+            recipe.getInput()
+                .size());
+        assertEquals(
+            73,
+            ((ItemStack) recipe.getInput()
+                .get(0)).getItemDamage());
+        assertEquals(
+            74,
+            ((ItemStack) recipe.getInput()
+                .get(1)).getItemDamage());
+        assertEquals(
+            1,
+            ((ItemStack) recipe.getInput()
+                .get(0)).stackSize);
+        assertEquals(
+            1,
+            ((ItemStack) recipe.getInput()
+                .get(1)).stackSize);
+        assertEquals(4, card.stackSize);
+        final ItemStack first = recipe.getCraftingResult(null), second = recipe.getCraftingResult(null);
+        assertSame(output.getItem(), first.getItem());
+        assertEquals(1, first.stackSize);
+        assertFalse(first.hasTagCompound());
+        assertNotSame(first, second);
     }
 }

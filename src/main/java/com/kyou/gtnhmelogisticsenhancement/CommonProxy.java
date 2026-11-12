@@ -5,11 +5,13 @@ import net.minecraft.entity.player.EntityPlayer;
 import com.kyou.gtnhmelogisticsenhancement.block.BlockMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedBusRegistration;
 import com.kyou.gtnhmelogisticsenhancement.distributed.DistributedOutputEnergy;
+import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyMonitorGui;
 import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyNetwork;
 import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyRecipes;
 import com.kyou.gtnhmelogisticsenhancement.energy.MEEnergyRegistration;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiHandler;
 import com.kyou.gtnhmelogisticsenhancement.gui.DriveGuiNetwork;
+import com.kyou.gtnhmelogisticsenhancement.item.ItemMEEnergyMonitor;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemMETransferDrive;
 import com.kyou.gtnhmelogisticsenhancement.item.ItemNetworkBindingTool;
 import com.kyou.gtnhmelogisticsenhancement.tile.TileMETransferDrive;
@@ -36,6 +38,8 @@ public class CommonProxy {
 
         GTNHMELogisticsEnhancementMod.meNetworkBindingTool = new ItemNetworkBindingTool();
         GameRegistry.registerItem(GTNHMELogisticsEnhancementMod.meNetworkBindingTool, "meNetworkBindingTool");
+        GTNHMELogisticsEnhancementMod.meEnergyMonitor = new ItemMEEnergyMonitor();
+        GameRegistry.registerItem(GTNHMELogisticsEnhancementMod.meEnergyMonitor, "meEnergyMonitor");
 
         GTNHMELogisticsEnhancementMod.LOG.info("{} version {}", GTNHMELogisticsEnhancementMod.MODNAME, Tags.VERSION);
     }
@@ -43,6 +47,7 @@ public class CommonProxy {
     public void init(FMLInitializationEvent event) {
         DistributedBusRegistration.register();
         MEEnergyRegistration.register();
+        MEEnergyMonitorGui.init();
         DistributedOutputEnergy.init();
         TransferScheduler.init();
         DriveGuiNetwork.init();

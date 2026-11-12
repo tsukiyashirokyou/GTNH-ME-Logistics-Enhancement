@@ -33,6 +33,7 @@ public class GTNHMELogisticsEnhancementMod {
     public static final Logger LOG = LogManager.getLogger(MODID);
     public static Block meTransferDrive;
     public static Item meNetworkBindingTool;
+    public static Item meEnergyMonitor;
 
     @Mod.Instance(MODID)
     public static GTNHMELogisticsEnhancementMod instance;

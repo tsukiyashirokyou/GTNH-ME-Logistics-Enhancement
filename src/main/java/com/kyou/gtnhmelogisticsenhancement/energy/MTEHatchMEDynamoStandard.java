@@ -194,12 +194,12 @@ public final class MTEHatchMEDynamoStandard extends MTEHatchDynamo implements IM
 
     @Override
     public ITexture[] getTexturesActive(final ITexture base) {
-        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.DYNAMO, true);
+        return MEEnergyPresentation.textures(base, spec(), true);
     }
 
     @Override
     public ITexture[] getTexturesInactive(final ITexture base) {
-        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.DYNAMO, false);
+        return MEEnergyPresentation.textures(base, spec(), false);
     }
 
     @Override

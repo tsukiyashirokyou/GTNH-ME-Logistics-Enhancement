@@ -50,6 +50,10 @@ dependencies {
     testRuntimeOnly("com.falsepattern:chunkapi-mc1.7.10:0.8.4:dev") { transitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI:1.3.4:dev") { transitive = false }
     testImplementation("com.github.GTNewHorizons:ModularUI2:2.3.94-1.7.10:dev") { transitive = false }
+    // Pinned MUI2 POM dependency: its GUI factory signatures link IAnimatedScreen even on the server.
+    // Isolated controller/permission tests only; never bundle this animation mod into the addon.
+    testRuntimeOnly("curse.maven:neverenoughanimation-1062347:7664003-sources-7663978") { transitive = false }
+    testRuntimeOnly("com.github.GTNewHorizons:lwjgl3ify:3.0.34:api") { transitive = false }
     // GTNH 2.9.0's real finite fluid cells; production only links AE2's IStorageCell API.
     testImplementation("com.github.GTNewHorizons:AE2FluidCraft-Rework:1.5.116-gtnh:dev") { transitive = false }
     // AE2's pinned native item definitions also load its bauble terminal class in isolated cell tests.

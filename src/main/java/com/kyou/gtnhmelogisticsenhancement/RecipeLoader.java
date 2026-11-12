@@ -2,12 +2,14 @@ package com.kyou.gtnhmelogisticsenhancement;
 
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.oredict.ShapedOreRecipe;
+import net.minecraftforge.oredict.ShapelessOreRecipe;
 
 import appeng.api.AEApi;
 import appeng.api.definitions.IDefinitions;
 import appeng.api.definitions.IItemDefinition;
 import appeng.api.util.AEColor;
 import cpw.mods.fml.common.registry.GameRegistry;
+import gregtech.api.util.GTModHandler;
 
 /** Independent Forge recipes; no replacement or removal of upstream recipes. */
 public final class RecipeLoader {
@@ -17,6 +19,15 @@ public final class RecipeLoader {
     public static void register() {
         final IDefinitions definitions = AEApi.instance()
             .definitions();
+        final ItemStack meter = GTModHandler.getIC2Item("ecMeter", 1);
+        if (meter == null) throw new IllegalStateException("Required IC2 EU meter (ecMeter) is unavailable");
+        GameRegistry.addRecipe(
+            monitorRecipe(
+                new ItemStack(GTNHMELogisticsEnhancementMod.meEnergyMonitor),
+                stack(
+                    definitions.items()
+                        .memoryCard()),
+                meter));
         GameRegistry.addRecipe(
             driveRecipe(
                 new ItemStack(GTNHMELogisticsEnhancementMod.meTransferDrive),
@@ -60,6 +71,14 @@ public final class RecipeLoader {
 
     public static ShapedOreRecipe driveRecipe(final ItemStack output, final ItemStack drive, final ItemStack port) {
         return new ShapedOreRecipe(output, "DDD", "DID", "DDD", 'D', drive, 'I', port).setMirrored(false);
+    }
+
+    public static ShapelessOreRecipe monitorRecipe(final ItemStack output, final ItemStack card,
+        final ItemStack meter) {
+        final ItemStack fresh = new ItemStack(output.getItem(), 1, output.getItemDamage());
+        final ItemStack oneCard = card.copy(), oneMeter = meter.copy();
+        oneCard.stackSize = oneMeter.stackSize = 1;
+        return new ShapelessOreRecipe(fresh, oneCard, oneMeter);
     }
 
     public static ShapedOreRecipe toolRecipe(final ItemStack output, final ItemStack receiver,

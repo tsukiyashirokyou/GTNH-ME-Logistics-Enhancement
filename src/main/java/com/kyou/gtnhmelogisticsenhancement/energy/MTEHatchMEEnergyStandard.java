@@ -199,12 +199,12 @@ public final class MTEHatchMEEnergyStandard extends MTEHatchEnergy implements IM
 
     @Override
     public ITexture[] getTexturesActive(final ITexture base) {
-        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.ENERGY, true);
+        return MEEnergyPresentation.textures(base, spec(), true);
     }
 
     @Override
     public ITexture[] getTexturesInactive(final ITexture base) {
-        return MEEnergyPresentation.textures(base, MEEnergySpec.Role.ENERGY, false);
+        return MEEnergyPresentation.textures(base, spec(), false);
     }
 
     @Override

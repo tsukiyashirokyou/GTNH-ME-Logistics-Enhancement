@@ -156,6 +156,13 @@ public final class MEEnergyTransfer {
             if (net == free) cache.sleepTarget(target);
             this.writes += 2;
             this.commits++;
+            cache.recordMonitorTransfer(
+                from.spec()
+                    .tier(),
+                from.businessColor(),
+                debit,
+                net,
+                now);
             return net;
         } finally {
             this.committing = false;

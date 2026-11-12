@@ -56,6 +56,7 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
     private int nextProbePhase;
     private int dormantCount;
     private long localDemandProbes;
+    private MEEnergyMonitor monitor;
 
     public MEEnergyGridCache(final IGrid grid) {
         this(grid, SERVICE_PERIOD, MEEnergyNetwork.nextPhase(SERVICE_PERIOD));
@@ -253,6 +254,10 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
                 }
                 this.nextGroup = (this.nextGroup + 1) % TIERS;
             }
+            if (this.monitor != null) {
+                if (!this.monitor.live(now)) stopMonitoring();
+                else work += this.monitor.sample(now, WORK_PER_TICK - work);
+            }
             this.tickWork = work;
             this.maxTickWork = Math.max(this.maxTickWork, work);
         } finally {
@@ -293,6 +298,37 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
 
     IGrid grid() {
         return this.grid;
+    }
+
+    public MEEnergyMonitor.Watch watch() {
+        if (this.closed) throw new IllegalStateException("Closed ME EU Grid");
+        final long now = MEEnergyTickClock.now();
+        if (this.monitor == null || !this.monitor.live(now)) {
+            stopMonitoring();
+            this.monitor = new MEEnergyMonitor(this, now);
+        }
+        return this.monitor.watch(now);
+    }
+
+    boolean isMonitoring(final MEEnergyMonitor candidate) {
+        return !this.closed && this.monitor == candidate;
+    }
+
+    void releaseMonitor(final MEEnergyMonitor candidate) {
+        if (this.monitor == candidate && !candidate.live(MEEnergyTickClock.now())) stopMonitoring();
+    }
+
+    private void stopMonitoring() {
+        if (this.monitor != null) this.monitor.invalidate();
+        this.monitor = null;
+    }
+
+    void recordMonitorTransfer(final int tier, final int color, final long gross, final long net, final long now) {
+        if (this.monitor != null) this.monitor.record(tier, color, gross, net, now);
+    }
+
+    Member firstMonitorMember() {
+        return this.members;
     }
 
     @Override
@@ -452,12 +488,14 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
 
     void shutdown() {
         this.closed = true;
+        stopMonitoring();
         invalidateAll();
         for (final MEEnergyGroupState group : this.groups) if (group != null) group.close();
         while (this.members != null) detach(this.members);
     }
 
     private void invalidate(final Member member) {
+        if (this.monitor != null) this.monitor.invalidate();
         final int index = tierIndex(
             member.endpoint.spec()
                 .tier());
@@ -465,6 +503,7 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
     }
 
     private void invalidateAll() {
+        if (this.monitor != null) this.monitor.invalidate();
         for (int index = 0; index < TIERS; index++) this.epochs[index] = Math.incrementExact(this.epochs[index]);
     }
 
@@ -618,6 +657,10 @@ public final class MEEnergyGridCache implements IMEEnergyGrid, MEEnergyRateBudge
 
         public Member next() {
             return this.next;
+        }
+
+        Member nextMonitorMember() {
+            return this.allNext;
         }
 
         Member nextDemand() {
