@@ -1,9 +1,12 @@
 package com.kyou.gtnhmelogisticsenhancement.energy;
 
+import java.util.Arrays;
+
 import net.minecraft.util.StatCollector;
 
 import com.kyou.gtnhmelogisticsenhancement.GTNHMELogisticsEnhancementMod;
 
+import gregtech.api.enums.Dyes;
 import gregtech.api.enums.Textures;
 import gregtech.api.interfaces.IIconContainer;
 import gregtech.api.interfaces.ITexture;
@@ -20,8 +23,27 @@ final class MEEnergyPresentation {
         .custom(GTNHMELogisticsEnhancementMod.MODID, "me_eu_badge_active");
     private static final IIconContainer ACTIVE_HIGH_BADGE = Textures.BlockIcons
         .custom(GTNHMELogisticsEnhancementMod.MODID, "me_eu_badge_high_active");
+    private static final IIconContainer GROUP_FRAME = Textures.BlockIcons
+        .custom(GTNHMELogisticsEnhancementMod.MODID, "me_eu_group_frame");
+    private static final IIconContainer GROUP_STRIPE = Textures.BlockIcons
+        .custom(GTNHMELogisticsEnhancementMod.MODID, "me_eu_group_stripe");
+    private static final ITexture GROUP_FRAME_TEXTURE = TextureFactory.of(GROUP_FRAME);
+    private static final ITexture[] GROUP_COLORS = new ITexture[16];
+
+    static {
+        for (int color = 0; color < GROUP_COLORS.length; color++) GROUP_COLORS[color] = TextureFactory.of(
+            GROUP_STRIPE,
+            Dyes.get(color)
+                .getRGBA());
+    }
 
     private MEEnergyPresentation() {}
+
+    /** Called by the MTE icon hook before GT drains its block-icon loading queue. */
+    static void registerIcons() {
+        // Invoking this method initializes the badge containers, including on resource reload.
+        // Waiting for textures()/description() can create them after the first atlas stitch.
+    }
 
     static ITexture[] textures(final ITexture base, final MEEnergySpec spec, final boolean active) {
         return new ITexture[] { base,
@@ -29,6 +51,20 @@ final class MEEnergyPresentation {
                 .of(active ? Textures.BlockIcons.OVERLAY_ME_HATCH_ACTIVE : Textures.BlockIcons.OVERLAY_ME_HATCH),
             port(spec), TextureFactory
                 .of(highPort(spec) ? active ? ACTIVE_HIGH_BADGE : HIGH_BADGE : active ? ACTIVE_BADGE : BADGE) };
+    }
+
+    /** Independent of the controller's casing override and of the purple/cyan ME status lights. */
+    static ITexture[] withColor(final ITexture[] layers, final int color) {
+        if (color < 0 || color >= GROUP_COLORS.length) return layers;
+        final ITexture[] painted = Arrays.copyOf(layers, layers.length + 2);
+        painted[layers.length] = GROUP_FRAME_TEXTURE;
+        painted[layers.length + 1] = GROUP_COLORS[color];
+        return painted;
+    }
+
+    static String colorName(final int group) {
+        return StatCollector
+            .translateToLocal("gtnhmelogisticsenhancement.monitor.color." + (group >= 0 && group <= 16 ? group : 0));
     }
 
     static boolean highPort(final MEEnergySpec spec) {

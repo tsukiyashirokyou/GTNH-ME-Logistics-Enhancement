@@ -126,6 +126,7 @@ GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩�
 
 - IV—UXV 共 162 种：普通能源 2A、普通动力 1A；Multi 包括各级 4/16/64A，以及该级原生常规激光仓实际存在的高 A 规格。ME 仓属于普通或 Multi 类型，不属于激光仓。
 - 用喷罐划分 EU 分组；仅同色互通，未染色只与未染色互通。喷漆不会改变 AE 接线颜色。默认仅正面接线，用剪线钳切换全部面接线；右键查看库存、供电规格、网络与分组状态。
+- Waila 显示服务端同步的缓存电量、容量和颜色分组名称，断网时仍可查看本地 EU。染色后六个面均有对应色边，成型后保留；紫色/青色 ME 状态灯与分组色边独立，未染色不显示分组色边。
 - 转入能源仓缓存的完整电量为 E 时，动力仓扣除 E/0.95，采用整数累计结算。**损耗在源端**，机器消费缓存时不再收费；同电压同 A 的一只动力仓不能持续满额供应一只能源仓，应留足供方余量。
 - 缓存为 24×V×A EU，默认每 **10 游戏 Tick** 批量补给，设备较多时分片执行。空仓启动、供能不足、超出调度能力仍可能断电；界面不提供调压、调 A 或独立周期设置。
 - 优先补给已观察到实际取电的运行负载及其安全储备，剩余电量再按额定权重给未满仓预充；没有余量时，未启动的空仓可能需要等待。满仓暂停参与需求扫描，每4 Tick只检查本地电量，发现下降后恢复补给；仍占用原有频道，不依据控制器的运行标志停供。
@@ -178,7 +179,7 @@ GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩�
 | GTNHLib | 0.11.54 |
 | ModularUI2 | 2.3.94-1.7.10 |
 | Thaumic Energistics | 可选，1.7.68-GTNH |
-| Mod 当前版本 | 0.1.0-rc.1 |
+| Mod 当前版本 | 0.1.0 |
 
 当前适配 **GTNH 2.9.0 稳定版**，以上版本对应[官方模组清单](https://github.com/GTNewHorizons/DreamAssemblerXXL/blob/master/releases/manifests/2.9.0.json)。游戏内各类机器和网络组合仍在持续验证，其他 GTNH 版本暂不保证兼容。
 
@@ -186,7 +187,7 @@ GTNH ME Logistics Enhancement 是一个面向 GregTech New Horizons 的 AE2 扩�
 
 ## 安装方法
 
-1. 从正式发布渠道获取 `gtnhmelogisticsenhancement-<version>.jar`，例如版本 `0.1.0-rc.1` 对应 `gtnhmelogisticsenhancement-0.1.0-rc.1.jar`。
+1. 从正式发布渠道获取 `gtnhmelogisticsenhancement-<version>.jar`，例如版本 `0.1.0` 对应 `gtnhmelogisticsenhancement-0.1.0.jar`。
 2. 将 JAR 放入 GTNH 实例的 `mods` 文件夹。
 3. 启动游戏，确认 Mod 正确加载。
 4. 在多人服务器中，确保客户端和服务器安装兼容的 Mod 版本。

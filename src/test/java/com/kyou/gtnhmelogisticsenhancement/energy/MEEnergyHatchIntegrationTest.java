@@ -36,7 +36,9 @@ public class MEEnergyHatchIntegrationTest {
                 { "everyRoundingCreditSurvivesNativeWorldReload" },
                 { "unloadAndRemovalStopWorkWithoutErasingWorldStock" },
                 { "nativeDropsAndReplacementNeverCarryEuOrCredit" }, { "malformedMetadataStaysIsolatedAcrossSaves" },
-                { "businessPaintAndReplacementInvalidateRuntimeSnapshots" } });
+                { "businessPaintAndReplacementInvalidateRuntimeSnapshots" },
+                { "wailaSnapshotsReadNativeOfflineStockAndAllColorGroups" },
+                { "paintRemainsVisibleOnEveryFaceWithControllerCasing" } });
     }
 
     @BeforeClass

@@ -2,6 +2,7 @@ package com.kyou.gtnhmelogisticsenhancement.energy;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
@@ -639,6 +640,149 @@ public class MEEnergyHatchFixture {
         assertFalse(endpoint.isEndpointValid());
         assertThrows(IllegalStateException.class, endpoint::readEU);
         assertThrows(IllegalStateException.class, () -> endpoint.writeEU(0));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void loadInspectionLanguage(final String locale) throws Exception {
+        final java.util.Properties language = new java.util.Properties();
+        try (java.io.InputStreamReader reader = new java.io.InputStreamReader(
+            MEEnergyHatchFixture.class
+                .getResourceAsStream("/assets/gtnhmelogisticsenhancement/lang/" + locale + ".lang"),
+            java.nio.charset.StandardCharsets.UTF_8)) {
+            language.load(reader);
+        }
+        final Class<?> translations = net.minecraft.util.StringTranslate.class;
+        final Field singleton = translations.getDeclaredField("instance");
+        singleton.setAccessible(true);
+        final Field dictionary = translations.getDeclaredField("languageList");
+        dictionary.setAccessible(true);
+        final java.util.Map<String, String> entries = (java.util.Map<String, String>) dictionary
+            .get(singleton.get(null));
+        for (final String key : language.stringPropertyNames()) entries.put(key, language.getProperty(key));
+    }
+
+    public void wailaSnapshotsReadNativeOfflineStockAndAllColorGroups() throws Exception {
+        loadInspectionLanguage("en_US");
+        final mcp.mobius.waila.api.IWailaConfigHandler config = (mcp.mobius.waila.api.IWailaConfigHandler) java.lang.reflect.Proxy
+            .newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[] { mcp.mobius.waila.api.IWailaConfigHandler.class },
+                (proxy, method, args) -> method.getReturnType() == boolean.class ? false : null);
+        for (final MEEnergyCatalog.Entry entry : MEEnergyCatalog.entries()) {
+            final IMEEnergyEndpoint server = hatch(entry.spec()), client = hatch(entry.spec());
+            final BaseMetaTileEntity base = attach(server), clientBase = attach(client);
+            final long stored = entry.spec()
+                .capacity() + 37;
+            server.machine()
+                .setEUVar(stored);
+            for (byte paint = -1; paint < 16; paint++) {
+                base.setWorldObj(new GTDummyWorld());
+                base.setColorization(paint);
+                base.setWorldObj(null);
+                final NBTTagCompound packet = new NBTTagCompound();
+                base.getWailaNBTData(null, base, packet, null, 0, 0, 0);
+                final NBTTagCompound snapshot = packet.getCompoundTag(MEEnergyWaila.DATA_KEY);
+                assertEquals(stored, snapshot.getLong("stored"));
+                assertEquals(
+                    entry.spec()
+                        .capacity(),
+                    snapshot.getLong("capacity"));
+                assertEquals(paint + 1, snapshot.getInteger("group"));
+                assertTrue(packet.hasKey("isPowered"));
+                assertFalse(packet.getBoolean("isActive"));
+                final mcp.mobius.waila.api.IWailaDataAccessor accessor = (mcp.mobius.waila.api.IWailaDataAccessor) java.lang.reflect.Proxy
+                    .newProxyInstance(
+                        getClass().getClassLoader(),
+                        new Class<?>[] { mcp.mobius.waila.api.IWailaDataAccessor.class },
+                        (proxy, method, args) -> method.getName()
+                            .equals("getNBTData") ? packet : null);
+                final java.util.List<String> tooltip = new java.util.ArrayList<>();
+                clientBase.getWailaBody(null, tooltip, accessor, config);
+                assertTrue(
+                    tooltip.toString(),
+                    tooltip.contains(
+                        MEEnergyPresentation.text(
+                            "waila.buffer",
+                            String.format(java.util.Locale.ROOT, "%,d", stored),
+                            String.format(
+                                java.util.Locale.ROOT,
+                                "%,d",
+                                entry.spec()
+                                    .capacity()))));
+                assertTrue(
+                    tooltip
+                        .contains(MEEnergyPresentation.text("waila.group", MEEnergyPresentation.colorName(paint + 1))));
+                assertEquals("The client has no synchronized native stock", 0, client.readEU());
+                assertEquals("Inspection must not transfer or erase EU", stored, server.readEU());
+            }
+        }
+        final NBTTagCompound packet = new NBTTagCompound(), snapshot = new NBTTagCompound();
+        final java.util.List<String> tooltip = new java.util.ArrayList<>();
+        MEEnergyWaila.body(packet, tooltip);
+        assertTrue(tooltip.isEmpty());
+        packet.setTag(MEEnergyWaila.DATA_KEY, snapshot);
+        MEEnergyWaila.body(packet, tooltip);
+        assertTrue(tooltip.isEmpty());
+        snapshot.setLong("stored", Long.MAX_VALUE);
+        snapshot.setLong("capacity", Long.MAX_VALUE);
+        snapshot.setInteger("group", 0);
+        MEEnergyWaila.body(packet, tooltip);
+        assertTrue(
+            tooltip.get(0),
+            tooltip.get(0)
+                .contains("9,223,372,036,854,775,807"));
+        loadInspectionLanguage("zh_CN");
+        tooltip.clear();
+        snapshot.setInteger("group", 2);
+        MEEnergyWaila.body(packet, tooltip);
+        assertTrue(
+            tooltip.get(0)
+                .startsWith("缓存电量："));
+        assertEquals("颜色分组：红色 [1]", tooltip.get(1));
+        loadInspectionLanguage("en_US");
+    }
+
+    public void paintRemainsVisibleOnEveryFaceWithControllerCasing() throws Exception {
+        final ITexture casing = gregtech.api.enums.Textures.BlockIcons.MACHINE_CASINGS[5][0];
+        gregtech.api.enums.Textures.BlockIcons.casingTexturePages[1][127] = casing;
+        final java.util.Set<String> palette = new java.util.HashSet<>();
+        for (final MEEnergyCatalog.Entry entry : MEEnergyCatalog.entries()) {
+            final IMEEnergyEndpoint host = hatch(entry.spec());
+            final BaseMetaTileEntity base = attach(host);
+            final MTEHatch hatch = (MTEHatch) host.machine();
+            for (final boolean formed : new boolean[] { false, true }) {
+                hatch.updateTexture(formed ? (1 << 7) + 127 : 0);
+                for (final ForgeDirection face : ForgeDirection.VALID_DIRECTIONS) {
+                    final boolean front = face == ForgeDirection.NORTH;
+                    for (final boolean active : new boolean[] { false, true }) {
+                        final ITexture[] neutral = hatch
+                            .getTexture(base, face, ForgeDirection.NORTH, -1, active, false);
+                        assertEquals(front ? 4 : 1, neutral.length);
+                        if (formed) assertSame(casing, neutral[0]);
+                        for (int paint = 0; paint < 16; paint++) {
+                            final ITexture[] layers = hatch
+                                .getTexture(base, face, ForgeDirection.NORTH, paint, active, false);
+                            assertEquals(neutral.length + 2, layers.length);
+                            if (formed) assertSame(casing, layers[0]);
+                            if (front) assertSame(MEEnergyPresentation.port(entry.spec()), layers[2]);
+                            for (final ITexture texture : layers) assertNotNull(texture);
+                            final short[] tint = ((gregtech.common.render.GTRenderedTexture) layers[layers.length - 1])
+                                .getRGBA();
+                            assertTrue(
+                                java.util.Arrays.equals(
+                                    gregtech.api.enums.Dyes.get(paint)
+                                        .getRGBA(),
+                                    tint));
+                            palette.add(java.util.Arrays.toString(tint));
+                            final ITexture[] again = hatch
+                                .getTexture(base, face, ForgeDirection.NORTH, paint, active, false);
+                            assertSame(layers[layers.length - 1], again[again.length - 1]);
+                        }
+                    }
+                }
+            }
+        }
+        assertEquals(16, palette.size());
     }
 
     public static class DirtyBase extends BaseMetaTileEntity {

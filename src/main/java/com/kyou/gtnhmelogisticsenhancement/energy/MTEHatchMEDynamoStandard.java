@@ -1,18 +1,29 @@
 package com.kyou.gtnhmelogisticsenhancement.energy;
 
+import java.util.List;
+
+import net.minecraft.client.renderer.texture.IIconRegister;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import appeng.api.networking.IGridNode;
 import appeng.api.util.AECableType;
 import appeng.api.util.DimensionalCoord;
 import appeng.me.helpers.AENetworkProxy;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatchDynamo;
+import mcp.mobius.waila.api.IWailaConfigHandler;
+import mcp.mobius.waila.api.IWailaDataAccessor;
 
 /** Native MTEHatchDynamo identity with one native EU stock and immutable ME capability. */
 @IMetaTileEntity.SkipGenerateDescription
@@ -190,6 +201,33 @@ public final class MTEHatchMEDynamoStandard extends MTEHatchDynamo implements IM
     @Override
     public String[] getDescription() {
         return MEEnergyPresentation.description(spec());
+    }
+
+    @Override
+    @SideOnly(Side.CLIENT)
+    public void registerIcons(final IIconRegister iconRegister) {
+        super.registerIcons(iconRegister);
+        MEEnergyPresentation.registerIcons();
+    }
+
+    @Override
+    public ITexture[] getTexture(final IGregTechTileEntity base, final ForgeDirection side, final ForgeDirection facing,
+        final int color, final boolean active, final boolean redstone) {
+        return MEEnergyPresentation.withColor(super.getTexture(base, side, facing, color, active, redstone), color);
+    }
+
+    @Override
+    public void getWailaNBTData(final EntityPlayerMP player, final TileEntity tile, final NBTTagCompound tag,
+        final World world, final int x, final int y, final int z) {
+        super.getWailaNBTData(player, tile, tag, world, x, y, z);
+        MEEnergyWaila.write(this, tag);
+    }
+
+    @Override
+    public void getWailaBody(final ItemStack item, final List<String> tooltip, final IWailaDataAccessor accessor,
+        final IWailaConfigHandler config) {
+        super.getWailaBody(item, tooltip, accessor, config);
+        MEEnergyWaila.body(accessor.getNBTData(), tooltip);
     }
 
     @Override

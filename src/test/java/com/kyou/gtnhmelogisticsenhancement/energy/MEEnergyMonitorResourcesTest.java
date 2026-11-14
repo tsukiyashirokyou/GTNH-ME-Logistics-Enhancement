@@ -19,7 +19,8 @@ public class MEEnergyMonitorResourcesTest {
     @Test
     public void itemAndEveryBadgeArePowerOfTwoTransparentTextures() throws Exception {
         for (final String name : new String[] { "items/me_energy_monitor", "blocks/me_eu_badge",
-            "blocks/me_eu_badge_active", "blocks/me_eu_badge_high", "blocks/me_eu_badge_high_active" }) {
+            "blocks/me_eu_badge_active", "blocks/me_eu_badge_high", "blocks/me_eu_badge_high_active",
+            "blocks/me_eu_group_frame", "blocks/me_eu_group_stripe" }) {
             try (InputStream input = getClass()
                 .getResourceAsStream("/assets/gtnhmelogisticsenhancement/textures/" + name + ".png")) {
                 assertNotNull(name, input);

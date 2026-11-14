@@ -62,11 +62,7 @@ public final class MEEnergyGui {
                 .asWidget()
                 .pos(8, 56));
         panel.child(
-            IKey.dynamic(
-                () -> MEEnergyPresentation.text(
-                    "color",
-                    color.getIntValue() == 0 ? MEEnergyPresentation.text("default_color")
-                        : Integer.toString(color.getIntValue() - 1)))
+            IKey.dynamic(() -> MEEnergyPresentation.text("color", MEEnergyPresentation.colorName(color.getIntValue())))
                 .asWidget()
                 .pos(8, 72));
         panel.child(
