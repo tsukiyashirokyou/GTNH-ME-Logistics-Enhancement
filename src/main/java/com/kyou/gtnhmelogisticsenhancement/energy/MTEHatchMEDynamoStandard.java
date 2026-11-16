@@ -204,6 +204,11 @@ public final class MTEHatchMEDynamoStandard extends MTEHatchDynamo implements IM
     }
 
     @Override
+    public String getLocalName() {
+        return MEEnergyPresentation.name(this);
+    }
+
+    @Override
     @SideOnly(Side.CLIENT)
     public void registerIcons(final IIconRegister iconRegister) {
         super.registerIcons(iconRegister);

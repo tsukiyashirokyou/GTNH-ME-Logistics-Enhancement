@@ -284,6 +284,7 @@ public class MEEnergyDeliveryFixture extends MEEnergyMachineCompatibilityFixture
                 .size());
     }
 
+    @SuppressWarnings("unchecked")
     public void localizedNamesOverlaysAndReadOnlyPanelsCoverEverySpec() throws Exception {
         registration();
         final List<Properties> languages = new ArrayList<>();
@@ -297,10 +298,42 @@ public class MEEnergyDeliveryFixture extends MEEnergyMachineCompatibilityFixture
             }
             languages.add(props);
         }
+        final java.util.Map<String, String> translations = (java.util.Map<String, String>) memberField(
+            net.minecraft.util.StringTranslate.class,
+            "languageList").get(memberField(net.minecraft.util.StringTranslate.class, "instance").get(null));
         for (final MEEnergyCatalog.Entry entry : MEEnergyCatalog.entries()) {
-            final IMEEnergyEndpoint host = (IMEEnergyEndpoint) placed(entry.spec()).machine();
-            for (final Properties props : languages) assertNotNull(
-                props.getProperty("gt.blockmachines." + MEEnergyRegistration.name(entry.spec()) + ".name"));
+            final BaseMetaTileEntity base = new BaseMetaTileEntity();
+            base.setInitialValuesAsNBT(new NBTTagCompound(), (short) entry.candidateMteId());
+            final IMEEnergyEndpoint host = (IMEEnergyEndpoint) base.getMetaTileEntity();
+            final String nameKey = "gt.blockmachines." + MEEnergyRegistration.name(entry.spec()) + ".name";
+            assertEquals(
+                nameKey,
+                host.machine()
+                    .getLocalNameKey());
+            for (final Properties props : languages) {
+                final String localizedName = props.getProperty(nameKey);
+                assertNotNull(localizedName);
+                assertTrue(
+                    localizedName,
+                    localizedName.startsWith(
+                        entry.spec()
+                            .tierName() + " "
+                            + entry.spec()
+                                .amperage()
+                            + "A ME "));
+                for (final String key : props.stringPropertyNames()) translations.put(key, props.getProperty(key));
+                assertEquals(
+                    localizedName,
+                    host.machine()
+                        .getLocalName());
+                assertEquals(localizedName, GregTechAPI.METATILEENTITIES[entry.candidateMteId()].getLocalName());
+                final String[] description = host.machine()
+                    .getDescription();
+                for (final String line : description) assertFalse(line, line.startsWith("Format error:"));
+                assertTrue(
+                    Arrays.asList(description)
+                        .contains(props.getProperty("gtnhmelogisticsenhancement.energy.loss_note")));
+            }
             final com.cleanroommc.modularui.screen.ModularPanel panel = MEEnergyGui
                 .build(host, new PanelSyncManager(new ModularSyncManager(false), true), new UISettings());
             final java.util.ArrayDeque<com.cleanroommc.modularui.api.widget.IWidget> queue = new java.util.ArrayDeque<>();
@@ -314,7 +347,7 @@ public class MEEnergyDeliveryFixture extends MEEnergyMachineCompatibilityFixture
                 children++;
                 queue.addAll(widget.getChildren());
             }
-            assertTrue(children >= 10);
+            assertTrue(children >= 8);
             assertEquals(
                 10,
                 host.machine()

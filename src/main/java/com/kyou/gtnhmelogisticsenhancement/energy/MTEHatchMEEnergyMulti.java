@@ -201,7 +201,8 @@ public final class MTEHatchMEEnergyMulti extends MTEHatchEnergyMulti implements 
 
     @Override
     public String[] getInfoData() {
-        return new String[] { "ME EU: " + spec().voltage() + " V, " + spec().amperage() + " A" };
+        return new String[] { MEEnergyPresentation.text("spec", spec().tierName(), spec().voltage(), spec().amperage()),
+            MEEnergyPresentation.text("stock", readEU(), spec().capacity()) };
     }
 
     @Override
@@ -237,6 +238,11 @@ public final class MTEHatchMEEnergyMulti extends MTEHatchEnergyMulti implements 
     @Override
     public String[] getDescription() {
         return MEEnergyPresentation.description(spec());
+    }
+
+    @Override
+    public String getLocalName() {
+        return MEEnergyPresentation.name(this);
     }
 
     @Override

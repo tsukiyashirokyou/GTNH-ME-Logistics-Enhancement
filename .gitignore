@@ -42,3 +42,22 @@ CODE_OF_CONDUCT.md
 # Internal development documentation
 /docs/
 /AGENTS.md
+# Codex 使用的 Gradle 用户目录
+/.codex-gradle-user-home/
+
+# Gradle 多模块构建产物
+**/build/
+
+# Java 编译产物
+*.class
+
+# Kotlin 本地缓存
+.kotlin/
+
+# JVM 崩溃日志
+hs_err_pid*.log
+replay_pid*.log
+
+# 临时文件
+*.tmp
+*.bak

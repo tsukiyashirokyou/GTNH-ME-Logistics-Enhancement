@@ -11,7 +11,7 @@ import net.minecraft.util.StatCollector;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
 
-/** Player-facing setup instructions for the drive's inventory item. */
+/** Inventory tooltip for the transfer drive. */
 public final class ItemMETransferDrive extends ItemBlock {
 
     public ItemMETransferDrive(final Block block) {
@@ -23,7 +23,7 @@ public final class ItemMETransferDrive extends ItemBlock {
     @SuppressWarnings({ "rawtypes", "unchecked" })
     public void addInformation(final ItemStack stack, final EntityPlayer player, final List lines,
         final boolean advanced) {
-        for (final String key : new String[] { "description", "cells", "binding", "configure" }) {
+        for (final String key : new String[] { "description", "cells", "binding" }) {
             lines.add(StatCollector.translateToLocal("gtnhmelogisticsenhancement.drive." + key));
         }
     }

@@ -737,8 +737,8 @@ public class MEEnergyHatchFixture {
         MEEnergyWaila.body(packet, tooltip);
         assertTrue(
             tooltip.get(0)
-                .startsWith("缓存电量："));
-        assertEquals("颜色分组：红色 [1]", tooltip.get(1));
+                .startsWith("储存电量："));
+        assertEquals("颜色分组：红色", tooltip.get(1));
         loadInspectionLanguage("en_US");
     }
 

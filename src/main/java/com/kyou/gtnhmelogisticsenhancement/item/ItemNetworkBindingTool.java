@@ -90,7 +90,6 @@ public final class ItemNetworkBindingTool extends Item {
         final boolean advanced) {
         lines.add(StatCollector.translateToLocal(MESSAGE + "description"));
         lines.add(StatCollector.translateToLocal(MESSAGE + "hint"));
-        lines.add(StatCollector.translateToLocal(MESSAGE + "gui_hint"));
         try {
             final BindingToolLogic.SourceReference source = BindingToolNbt.readSource(stack.getTagCompound());
             if (source != null) {

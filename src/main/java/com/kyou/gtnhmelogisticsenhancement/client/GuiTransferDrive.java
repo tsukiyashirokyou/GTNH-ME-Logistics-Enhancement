@@ -645,9 +645,7 @@ public final class GuiTransferDrive extends GuiContainer {
                         this.state()
                             .getInteger("page") + 1),
                     240));
-            for (final String key : new String[] { "storage_priority_hint", "transfer_types" }) {
-                lines.addAll(this.fontRendererObj.listFormattedStringToWidth(tr(key), 240));
-            }
+            lines.addAll(this.fontRendererObj.listFormattedStringToWidth(tr("storage_priority_hint"), 240));
             this.drawHoveringText(lines, mouseX, mouseY, this.fontRendererObj);
         }
         if (mouseX >= this.guiLeft + 9 && mouseX < this.guiLeft + 167
@@ -728,7 +726,6 @@ public final class GuiTransferDrive extends GuiContainer {
                         translatedOr("target_status." + detail.getString("status"), "target_status.UNKNOWN")));
             }
             lines.add(tr("status", this.schedulerStatus()));
-            lines.add(this.feedbackText());
             lines.add(tr("not_proof"));
             if (mouseY < this.guiTop + 91 || mouseY >= this.guiTop + 204
                 || mouseY >= this.guiTop + 111 && mouseY < this.guiTop + 123) {

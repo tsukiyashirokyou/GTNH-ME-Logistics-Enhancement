@@ -10,6 +10,7 @@ import gregtech.api.enums.Dyes;
 import gregtech.api.enums.Textures;
 import gregtech.api.interfaces.IIconContainer;
 import gregtech.api.interfaces.ITexture;
+import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.render.TextureFactory;
 
 /** Shared appearance and tooltips; never inherits laser optics or controls. */
@@ -90,7 +91,13 @@ final class MEEnergyPresentation {
     }
 
     static String text(final String key, final Object... args) {
-        return StatCollector.translateToLocalFormatted("gtnhmelogisticsenhancement.energy." + key, args);
+        final String translationKey = "gtnhmelogisticsenhancement.energy." + key;
+        return args.length == 0 ? StatCollector.translateToLocal(translationKey)
+            : StatCollector.translateToLocalFormatted(translationKey, args);
+    }
+
+    static String name(final MetaTileEntity hatch) {
+        return StatCollector.translateToLocal(hatch.getLocalNameKey());
     }
 
     static String[] description(final MEEnergySpec spec) {

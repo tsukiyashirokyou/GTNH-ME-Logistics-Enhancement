@@ -33,8 +33,8 @@ public final class MEEnergyRegistration {
             final String name = name(spec);
             final String regional = spec.tierName() + " "
                 + spec.amperage()
-                + "A "
-                + (spec.role() == MEEnergySpec.Role.ENERGY ? "Energy Hatch (ME)" : "Dynamo Hatch (ME)");
+                + "A ME "
+                + (spec.role() == MEEnergySpec.Role.ENERGY ? "Energy Hatch" : "Dynamo Hatch");
             final MetaTileEntity machine;
             if (spec.family() == MEEnergySpec.Family.STANDARD) {
                 machine = spec.role() == MEEnergySpec.Role.ENERGY

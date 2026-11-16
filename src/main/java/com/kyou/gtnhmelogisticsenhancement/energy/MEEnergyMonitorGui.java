@@ -21,7 +21,6 @@ import com.cleanroommc.modularui.screen.ModularPanel;
 import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.IntValue;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
-import com.cleanroommc.modularui.value.sync.LongSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.value.sync.StringSyncValue;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
@@ -128,27 +127,14 @@ public final class MEEnergyMonitorGui extends AbstractUIFactory<PosGuiData> {
                 .allowC2S();
         sync.syncValue("color", color);
         final IntValue page = new IntValue(0);
-        final LongSyncValue flowEnd = new LongSyncValue(
-            () -> session == null || session.monitor() == null ? -1
-                : session.monitor()
-                    .flowEnd());
-        final LongSyncValue stockStart = new LongSyncValue(
-            () -> session == null || session.monitor() == null ? -1
-                : session.monitor()
-                    .stockStart());
-        final LongSyncValue stockEnd = new LongSyncValue(
-            () -> session == null || session.monitor() == null ? -1
-                : session.monitor()
-                    .stockEnd());
-        final IntSyncValue updating = new IntSyncValue(
-            () -> session == null || session.monitor() == null
-                || session.monitor()
-                    .updating() ? 1 : 0);
-        sync.syncValue("flowEnd", flowEnd);
-        sync.syncValue("stockStart", stockStart);
-        sync.syncValue("stockEnd", stockEnd);
-        sync.syncValue("updating", updating);
-        final ModularPanel panel = ModularPanel.defaultPanel("meEUMonitor", 388, 238);
+        final IntSyncValue status = new IntSyncValue(() -> {
+            final MEEnergyMonitor monitor = session == null ? null : session.monitor();
+            if (monitor == null || monitor.flowEnd() < 0) return 0;
+            if (monitor.stockStart() < 0) return 1;
+            return monitor.updating() ? 2 : 3;
+        });
+        sync.syncValue("status", status);
+        final ModularPanel panel = ModularPanel.defaultPanel("meEUMonitor", 388, 210);
         panel.child(
             IKey.lang(PREFIX + "name")
                 .asWidget()
@@ -167,28 +153,17 @@ public final class MEEnergyMonitorGui extends AbstractUIFactory<PosGuiData> {
         panel.child(pages);
         panel.child(
             IKey.dynamic(
-                () -> flowEnd.getLongValue() < 0 ? text("warming")
-                    : text("window", flowEnd.getLongValue() - 20, flowEnd.getLongValue()))
+                () -> text(
+                    status.getIntValue() == 0 ? "warming"
+                        : status.getIntValue() == 1 ? "no_sample" : status.getIntValue() == 2 ? "pending" : "ready"))
                 .asWidget()
                 .pos(8, 44)
                 .scale(0.7f)
                 .maxWidth(370));
         panel.child(
-            IKey.dynamic(
-                () -> stockStart.getLongValue() < 0 ? text("no_sample")
-                    : text(
-                        "sample",
-                        stockStart.getLongValue(),
-                        stockEnd.getLongValue(),
-                        text(updating.getIntValue() == 1 ? "pending" : "complete")))
-                .asWidget()
-                .pos(8, 57)
-                .scale(0.7f)
-                .maxWidth(370));
-        panel.child(
             IKey.dynamic(() -> text("heading." + page.getIntValue()))
                 .asWidget()
-                .pos(8, 73)
+                .pos(8, 59)
                 .scale(0.7f)
                 .maxWidth(370));
         for (int tier = MEEnergySpec.MIN_TIER; tier <= MEEnergySpec.MAX_TIER; tier++) {
@@ -204,20 +179,14 @@ public final class MEEnergyMonitorGui extends AbstractUIFactory<PosGuiData> {
             panel.child(
                 IKey.dynamic(() -> display.line(tierName, value.getStringValue(), page.getIntValue()))
                     .asWidget()
-                    .pos(8, 88 + (tier - 5) * 14)
+                    .pos(8, 74 + (tier - 5) * 14)
                     .scale(0.72f)
                     .maxWidth(370)
                     .tooltipDynamic(tooltip -> {
                         final MEEnergyMonitorRow row = display.read(value.getStringValue());
+                        tooltip.addLine(text("note"));
                         tooltip.addLine(
-                            text(
-                                "counts",
-                                row.onlineSources(),
-                                row.sources(),
-                                row.onlineTargets(),
-                                row.targets(),
-                                row.sleepingTargets(),
-                                row.invalidStocks()));
+                            text("counts", row.onlineSources(), row.sources(), row.onlineTargets(), row.targets()));
                         for (int amount = 0; amount < 9; amount++) tooltip.addLine(
                             text(
                                 "amount." + amount,
@@ -231,12 +200,6 @@ public final class MEEnergyMonitorGui extends AbstractUIFactory<PosGuiData> {
                                     .toString()));
                     }));
         }
-        panel.child(
-            IKey.lang(PREFIX + "note")
-                .asWidget()
-                .pos(8, 220)
-                .scale(0.65f)
-                .maxWidth(370));
         return panel;
     }
 
@@ -247,8 +210,7 @@ public final class MEEnergyMonitorGui extends AbstractUIFactory<PosGuiData> {
             compact(row.amount(0), 1),
             compact(row.amount(1), 1),
             compact(row.amount(2), 1),
-            compact(row.amount(3), 1),
-            row.sleepingTargets());
+            compact(row.amount(3), 1));
         if (page == 2) return text(
             "row.limit",
             tier,

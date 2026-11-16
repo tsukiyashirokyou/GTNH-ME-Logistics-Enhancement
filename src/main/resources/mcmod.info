@@ -3,7 +3,7 @@
 	"modList": [{
 		"modid": "${modId}",
 		"name": "${modName}",
-		"description": "Store up to 64 AE2 cells in one drive and schedule transfers between ME networks. Bind multiple destinations, set transfer rules for each group of cells, and send GregTech machine outputs into ME storage with partitioned output buses and hatches. Made for GregTech New Horizons.",
+		"description": "An ME logistics addon for GregTech New Horizons. Distribute GregTech EU through your ME network with wireless energy and dynamo hatches, monitor network energy flow, buffer machine products with partitioned output buses and hatches, and schedule item, fluid and essentia transfers between ME networks with a 64-slot storage drive.",
 		"version": "${modVersion}",
 		"mcversion": "${minecraftVersion}",
 		"url": "",

@@ -6,7 +6,6 @@ import com.cleanroommc.modularui.screen.UISettings;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.LongSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
-import com.cleanroommc.modularui.value.sync.StringSyncValue;
 
 /** Read-only, server-to-client values; sampled only while a viewer has this panel open. */
 public final class MEEnergyGui {
@@ -21,23 +20,20 @@ public final class MEEnergyGui {
             () -> host.isBooting() ? 1 : host.isActive() ? 2 : host.isPowered() ? 3 : 0);
         final IntSyncValue color = new IntSyncValue(host::businessColor);
         final IntSyncValue faces = new IntSyncValue(() -> host.connectsToAllSides() ? 1 : 0);
-        final StringSyncValue fault = new StringSyncValue(() -> {
-            final String data = host.energyState()
-                .diagnostic();
-            return data.isEmpty() ? host.nodeSupport()
-                .diagnostic() : data;
-        });
+        final IntSyncValue fault = new IntSyncValue(
+            () -> host.energyState()
+                .diagnostic()
+                .isEmpty()
+                && host.nodeSupport()
+                    .diagnostic()
+                    .isEmpty() ? 0 : 1);
         sync.syncValue("eu", stored);
         sync.syncValue("network", network);
         sync.syncValue("color", color);
         sync.syncValue("faces", faces);
         sync.syncValue("fault", fault);
         final MEEnergySpec spec = host.spec();
-        final LongSyncValue age = new LongSyncValue(host.nodeSupport()::groupServiceAge);
-        final LongSyncValue expired = new LongSyncValue(host.nodeSupport()::expiredRounds);
-        sync.syncValue("serviceAge", age);
-        sync.syncValue("expiredRounds", expired);
-        final ModularPanel panel = ModularPanel.defaultPanel("meEU", 286, 206);
+        final ModularPanel panel = ModularPanel.defaultPanel("meEU", 286, 146);
         panel.child(
             IKey.lang(
                 "gtnhmelogisticsenhancement.energy."
@@ -54,7 +50,9 @@ public final class MEEnergyGui {
                 .asWidget()
                 .pos(8, 40)
                 .scale(0.7f)
-                .maxWidth(270));
+                .maxWidth(270)
+                .addTooltipLine(MEEnergyPresentation.text("offline_note"))
+                .addTooltipLine(MEEnergyPresentation.text("removal_note")));
         panel.child(
             IKey.dynamic(
                 () -> MEEnergyPresentation
@@ -64,47 +62,23 @@ public final class MEEnergyGui {
         panel.child(
             IKey.dynamic(() -> MEEnergyPresentation.text("color", MEEnergyPresentation.colorName(color.getIntValue())))
                 .asWidget()
-                .pos(8, 72));
+                .pos(8, 72)
+                .addTooltipLine(MEEnergyPresentation.text("paint_note")));
         panel.child(
             IKey.dynamic(() -> MEEnergyPresentation.text("faces." + faces.getIntValue()))
                 .asWidget()
-                .pos(8, 88));
+                .pos(8, 88)
+                .addTooltipLine(MEEnergyPresentation.text("faces_note")));
         panel.child(
-            IKey.dynamic(
-                () -> fault.getStringValue()
-                    .isEmpty() ? MEEnergyPresentation.text("ready")
-                        : MEEnergyPresentation.text("fault", fault.getStringValue()))
+            IKey.dynamic(() -> fault.getIntValue() == 0 ? "" : MEEnergyPresentation.text("fault"))
                 .asWidget()
-                .pos(8, 104)
+                .pos(8, 122)
                 .scale(0.8f)
                 .maxWidth(270));
         panel.child(
-            IKey.lang("gtnhmelogisticsenhancement.energy.loss_note")
+            IKey.dynamic(() -> MEEnergyPresentation.text("loss_note"))
                 .asWidget()
-                .pos(8, 122)
-                .scale(0.65f)
-                .maxWidth(270));
-        panel.child(
-            IKey.lang("gtnhmelogisticsenhancement.energy.offline_note")
-                .asWidget()
-                .pos(8, 140)
-                .scale(0.65f)
-                .maxWidth(270));
-        panel.child(
-            IKey.lang("gtnhmelogisticsenhancement.energy.removal_note")
-                .asWidget()
-                .pos(8, 158)
-                .scale(0.65f)
-                .maxWidth(270));
-        panel.child(
-            IKey.dynamic(
-                () -> MEEnergyPresentation.text(
-                    "service",
-                    age.getLongValue() < 0 ? MEEnergyPresentation.text("never")
-                        : MEEnergyPresentation.text("ticks_ago", age.getLongValue()),
-                    expired.getLongValue()))
-                .asWidget()
-                .pos(8, 181)
+                .pos(8, 104)
                 .scale(0.65f)
                 .maxWidth(270));
         return panel;

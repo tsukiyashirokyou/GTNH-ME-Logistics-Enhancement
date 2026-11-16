@@ -48,9 +48,8 @@ public class MEEnergyMonitorResourcesTest {
     @Test
     public void bothLanguagesCoverColorsPagesAndExactMeasurementTooltips() throws Exception {
         final Set<String> expected = new HashSet<>();
-        for (final String key : new String[] { "name", "hint", "note", "denied", "warming", "window", "sample",
-            "no_sample", "pending", "complete", "counts", "loss", "row.flow", "row.stock", "row.limit" })
-            expected.add(key);
+        for (final String key : new String[] { "name", "hint", "note", "denied", "warming", "no_sample", "pending",
+            "ready", "counts", "loss", "row.flow", "row.stock", "row.limit" }) expected.add(key);
         for (int index = 0; index < 17; index++) expected.add("color." + index);
         for (int index = 0; index < 9; index++) expected.add("amount." + index);
         for (int index = 0; index < 3; index++) {
